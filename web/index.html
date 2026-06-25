@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portilla–Simoncelli Texture Model — JS</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #171a23; --panel2: #1f2330; --ink: #e6e9ef;
+    --muted: #97a0b3; --accent: #5b9dff; --accent2: #46d39a; --line: #2a2f3d;
+    --warn: #ffb454;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 22px 26px 10px; border-bottom: 1px solid var(--line); }
+  h1 { margin: 0 0 4px; font-size: 20px; font-weight: 650; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); max-width: 820px; }
+  main { padding: 18px 26px 60px; max-width: 1180px; margin: 0 auto; }
+  .panel { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 18px; margin: 16px 0; }
+  .panel h2 { margin: 0 0 12px; font-size: 15px; font-weight: 620;
+    letter-spacing: .02em; color: var(--ink); }
+  .panel h2 small { color: var(--muted); font-weight: 400; margin-left: 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { color: var(--muted); font-size: 12px; }
+  input[type=number] { width: 78px; background: var(--panel2); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; }
+  button { background: var(--accent); color: #06122b; border: 0; cursor: pointer;
+    font-weight: 640; border-radius: 8px; padding: 9px 16px; font-size: 13px; }
+  button.secondary { background: var(--panel2); color: var(--ink); border: 1px solid var(--line); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .filebtn { position: relative; overflow: hidden; display: inline-block; }
+  .filebtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .gallery { display: flex; flex-wrap: wrap; gap: 14px; }
+  .tile { background: var(--panel2); border: 1px solid var(--line); border-radius: 9px;
+    padding: 8px; text-align: center; }
+  .tile canvas { display: block; image-rendering: pixelated; border-radius: 4px;
+    background: #000; }
+  .tile .cap { color: var(--muted); font-size: 11px; margin-top: 6px; }
+  .scalegrid { display: grid; gap: 12px; }
+  .scalerow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .scalerow .lbl { width: 78px; color: var(--muted); font-size: 12px; }
+  table.stats { border-collapse: collapse; font-size: 13px; }
+  table.stats td { padding: 3px 14px 3px 0; }
+  table.stats td.k { color: var(--muted); }
+  table.stats td.v { font-variant-numeric: tabular-nums; }
+  .bar { height: 8px; background: var(--panel2); border-radius: 5px; overflow: hidden;
+    border: 1px solid var(--line); }
+  .bar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg,var(--accent),var(--accent2)); transition: width .15s; }
+  .muted { color: var(--muted); }
+  .note { color: var(--warn); font-size: 12.5px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .flex { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  .hidden { display: none; }
+  a.dl { color: var(--accent2); text-decoration: none; font-weight: 600; }
+  .legend { font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:20px; background:var(--panel2);
+    border:1px solid var(--line); color:var(--muted); font-size:11px; margin-left:6px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>Portilla&ndash;Simoncelli <span>Texture Model</span> &mdash; JavaScript</h1>
+  <div class="sub">A browser port of the steerable-pyramid texture analysis/synthesis algorithm
+   (Portilla &amp; Simoncelli, 2000), faithful to the C++ reference. Upload an image to see the
+   pyramid decomposition and the extracted joint statistics, then synthesize a new texture with
+   the same statistics. Grayscale path.</div>
+</header>
+<main>
+
+  <div class="panel">
+    <h2>1 &middot; Input &amp; parameters</h2>
+    <div class="row">
+      <span class="filebtn"><button class="secondary">Upload image…</button>
+        <input type="file" id="file" accept="image/*"></span>
+      <button class="secondary" id="loadSample">Load reference sample</button>
+      <div class="field"><label>Scales (P)</label><input type="number" id="npyr" value="4" min="1" max="6"></div>
+      <div class="field"><label>Orientations (K)</label><input type="number" id="nsteer" value="4" min="3" max="8"></div>
+      <div class="field"><label>Iterations</label><input type="number" id="niter" value="50" min="1" max="200"></div>
+      <div class="field"><label>Na</label><input type="number" id="na" value="7" min="3" max="13" step="2"></div>
+      <button id="analyzeBtn" disabled>Analyze</button>
+    </div>
+    <div class="flex" style="margin-top:16px">
+      <div class="tile"><canvas id="origCanvas" width="180" height="180"></canvas><div class="cap">original</div></div>
+      <div class="tile"><canvas id="grayCanvas" width="180" height="180"></canvas><div class="cap" id="grayCap">grayscale (cropped)</div></div>
+    </div>
+    <div id="paramNote" class="note" style="margin-top:10px"></div>
+  </div>
+
+  <div class="panel hidden" id="filtersPanel">
+    <h2>2 &middot; Pyramid filters <small>frequency-domain masks (DC at center)</small></h2>
+    <div class="gallery" id="filterGallery"></div>
+    <div class="legend">High-pass H&#8320;, low-pass L&#8320;, and the K oriented band-pass filters at the finest scale.</div>
+  </div>
+
+  <div class="panel hidden" id="analysisPanel">
+    <h2>3 &middot; Pyramid decomposition <small>filter outputs at each stage</small></h2>
+    <div class="gallery" id="residGallery" style="margin-bottom:16px"></div>
+    <div class="scalegrid" id="scaleGrid"></div>
+    <div class="legend">Each row is a scale (finest at top). Cells show the magnitude |&middot;| of each oriented sub-band,
+      then that scale&rsquo;s low-pass residual. Brightness is per-tile normalized.</div>
+  </div>
+
+  <div class="panel hidden" id="statsPanel">
+    <h2>4 &middot; Extracted statistics <small>the texture&rsquo;s parametric summary</small></h2>
+    <div class="flex">
+      <table class="stats" id="statsTable"></table>
+      <div style="flex:1; min-width:260px">
+        <div class="muted" id="statsCounts"></div>
+        <div class="legend">These constraints (marginal moments, raw auto-correlations, magnitude &amp;
+          phase cross-correlations across orientation and scale) are exactly the quantities validated
+          against the C++ reference &mdash; see <span class="mono">test/run_validation.js</span>.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel hidden" id="synthPanel">
+    <h2>5 &middot; Synthesis <small>impose the statistics on noise, iteratively</small></h2>
+    <div class="row" style="margin-bottom:14px">
+      <button id="synthBtn">Synthesize texture</button>
+      <button class="secondary" id="stopBtn" disabled>Stop</button>
+      <div style="flex:1; min-width:200px">
+        <div class="bar"><i id="progBar"></i></div>
+        <div class="muted mono" id="progText" style="margin-top:6px">idle</div>
+      </div>
+    </div>
+    <div class="flex">
+      <div class="tile"><canvas id="targetCanvas" width="220" height="220"></canvas><div class="cap">target (input)</div></div>
+      <div class="tile"><canvas id="synthCanvas" width="220" height="220"></canvas><div class="cap">synthesized</div></div>
+      <div style="align-self:center"><a class="dl hidden" id="dlLink" download="synthesized.png">&#8595; download PNG</a></div>
+    </div>
+    <div class="legend" id="convText"></div>
+  </div>
+
+</main>
+
+<script src="js/fft.js"></script>
+<script src="js/filters.js"></script>
+<script src="js/mt19937.js"></script>
+<script src="js/stats.js"></script>
+<script src="js/linalg.js"></script>
+<script src="js/pyramid.js"></script>
+<script src="js/analysis.js"></script>
+<script src="js/adjust.js"></script>
+<script src="js/adjust_cross_scale.js"></script>
+<script src="js/synthesis.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
