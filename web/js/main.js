@@ -11,13 +11,14 @@
   // statsToObject lives in js/statsjson.js (PS.StatsJSON) so it is unit-testable
   // headlessly. It returns { meta, annotated[], raw[] } -- see that file.
   var statsToObject = PS.StatsJSON.statsToObject;
-  function downloadJSON(obj, filename) {
-    var blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+  function downloadText(text, filename, mime) {
+    var blob = new Blob([text], { type: mime || 'text/plain' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a'); a.href = url; a.download = filename;
     document.body.appendChild(a); a.click();
     setTimeout(function () { URL.revokeObjectURL(url); a.parentNode && a.parentNode.removeChild(a); }, 200);
   }
+  function downloadJSON(obj, filename) { downloadText(JSON.stringify(obj, null, 2), filename, 'application/json'); }
 
   // ---- image helpers ----
   function loadImage(src) {
@@ -296,6 +297,13 @@
     if (!state.analysis) return;
     downloadJSON(statsToObject(state.analysis.stats, state.params,
       { nx: state.cropped.nx, ny: state.cropped.ny }, 'analysis(input)'), 'statistics_input.json');
+  });
+  // raw CSV: the "raw" array only, one comma-separated line, no header
+  $('exportCsvBtn').addEventListener('click', function () {
+    if (!state.analysis) return;
+    var obj = statsToObject(state.analysis.stats, state.params,
+      { nx: state.cropped.nx, ny: state.cropped.ny }, 'analysis(input)');
+    downloadText(obj.raw.join(',') + '\n', 'statistics_input_raw.csv', 'text/csv');
   });
   $('exportSynthStatsBtn').addEventListener('click', function () {
     if (!state.synthStats) return;
