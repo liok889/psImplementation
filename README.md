@@ -90,6 +90,47 @@ differ by design.
 
 ---
 
+## Native reference build & benchmark
+
+The original C++ program builds on macOS (Apple clang + MacPorts) once the libs
+are installed (`fftw3f`, `libpng/jpeg/tiff`, `libomp`). The stock makefile flags
+need three adjustments — `-fopenmp` → `-Xpreprocessor -fopenmp` with
+`-I/opt/local/include/libomp`, `-lfftw3f_omp` → `-lfftw3f_threads`, and the
+MacPorts `-I/-L /opt/local` paths:
+
+```bash
+cd reference && make portilla_simoncelli \
+  CC=clang CXX=clang++ \
+  CFLAGS="-Wall -O3 -march=native -I/opt/local/include -I/opt/local/include/libomp -Xpreprocessor -fopenmp" \
+  LDFLAGS="-L/opt/local/lib -L/opt/local/lib/libomp -lm -lpng -ljpeg -ltiff -lstdc++ -lfftw3f -lfftw3f_threads -lomp"
+./portilla_simoncelli data/sample.png out.png -b 1     # grayscale
+```
+
+(One portability fix to the vendored `iio.c` was required: on arm64 macOS
+`long double == double`, which made two `switch` `case` labels collide — the
+`long double` case is now guarded by `__LDBL_MANT_DIG__`.)
+
+**Benchmark — JS vs native C++**, analysis and synthesis timed separately, same
+256×256 grayscale fixture, same parameters (P=4, K=4, Na=7, 50 iterations), both
+single-threaded (native = real FFTW, JS = JavaScriptCore):
+
+```bash
+bash bench/run.sh
+```
+
+| stage | native C++ (FFTW) | JavaScript (jsc) | JS / C++ |
+|---|--:|--:|--:|
+| **analysis** (once) | ~26 ms | ~72 ms | **~2.8×** |
+| **synthesis** (50 iters) | ~2.1 s | ~6.2 s | **~3.0×** |
+| synthesis per iteration | ~42 ms | ~125 ms | ~3.0× |
+
+So the pure-JavaScript port runs about **3× slower** than optimized native C++ —
+a strong result given the native build uses FFTW (hand-tuned SIMD) while the JS
+uses a custom double-precision FFT with no SIMD. (Numbers are from JavaScriptCore;
+a browser's V8 may differ. Multi-threading the native build via OpenMP/FFTW
+threads does *not* help at 256×256 — thread overhead dominates and the stock
+multi-threaded binary is actually slower than single-threaded here.)
+
 ## Project layout
 
 ```

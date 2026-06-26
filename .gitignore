@@ -15,3 +15,9 @@ test/*.png
 
 # Local Claude Code settings
 .claude/
+
+# Native builds
+reference/portilla_simoncelli
+reference/src/*.o
+reference/src/external/*.o
+bench/bench_native

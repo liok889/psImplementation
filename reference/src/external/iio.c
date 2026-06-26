@@ -511,7 +511,11 @@ int iio_type_id(size_t sample_size, bool ieeefp_sample, bool signed_sample)
 		switch(sample_size) {
 		case sizeof(float):       return IIO_TYPE_FLOAT;
 		case sizeof(double):      return IIO_TYPE_DOUBLE;
+#if !defined(__LDBL_MANT_DIG__) || (__LDBL_MANT_DIG__ != __DBL_MANT_DIG__)
+		// on arm64 macOS long double == double, which would make this case
+		// collide with `case sizeof(double)`; drop it when the sizes match.
 		case sizeof(long double): return IIO_TYPE_LONGDOUBLE;
+#endif
 		case sizeof(float)/2:     return IIO_TYPE_HALF;
 		default: fail("bad float size %zu", sample_size);
 		}
