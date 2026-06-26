@@ -127,6 +127,15 @@ line to stdout (no header), then skips synthesis:
 ./portilla_simoncelli data/sample.png unused.png -b 1 -S 1 > stats.csv
 ```
 
+Add `-H 1` to also emit a **header row** of abbreviated column names that encode
+each statistic's origin — scale `s`, orientation `o`, lag `dx`/`dy`, parent
+real/imag band — e.g. `autoCorrLow_s0_dx-3_dy-3`, `magMean_s1_o2`,
+`parentRealCorr_s2_3_o3_im3`:
+
+```bash
+./portilla_simoncelli data/sample.png unused.png -b 1 -S 1 -H 1 > stats.csv
+```
+
 The values and their order match the JavaScript implementation's raw export
 exactly (including `magMeans`, which the `-o` text dump omits). Verify with
 `bash test/verify_cpp_csv.sh` — the C++ and JS outputs agree value-by-value to

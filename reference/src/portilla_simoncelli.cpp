@@ -83,6 +83,7 @@ static void print_help(char *name)
   printf("-C4, \t Adjust real correlation (1) or not (0) (by default %i)\n", PAR_DEFAULT_REALCORR);
   printf("-o, \t Write the statistics evolution in a file (1) or not (0) (by default %i)\n", PAR_DEFAULT_STATISTICS);
   printf("-S, \t Print the summary statistics as a CSV line to stdout and skip synthesis (1) or not (0) (default 0)\n");
+  printf("-H, \t With -S, also print a header row of abbreviated column names (1) or not (0) (default 0)\n");
 
   printf("\n");
   printf("Interpolation of two input textures:\n");
@@ -107,7 +108,7 @@ static int read_parameters(int argc, char *argv[], char **infile,
                            int &edge_handling, int &add_smooth, int &crop,
                            unsigned long &seed, int cmask[4], int &verbose,
                            char **infile2, float &interpWeight, int &gray,
-                           int &statistics, int &statistics_csv)
+                           int &statistics, int &statistics_csv, int &header_csv)
 {
   // display usage
   if (argc < 3) {
@@ -139,6 +140,7 @@ static int read_parameters(int argc, char *argv[], char **infile,
     gray          = PAR_DEFAULT_GRAY;
     statistics   = PAR_DEFAULT_STATISTICS;
     statistics_csv = 0;
+    header_csv = 0;
     int interpolate = 0;
 
     // read each parameter from the command line
@@ -233,6 +235,10 @@ static int read_parameters(int argc, char *argv[], char **infile,
       if(strcmp(argv[i],"-S")==0)
         if(i < argc-1)
           statistics_csv = atoi(argv[++i]);
+
+      if(strcmp(argv[i],"-H")==0)
+        if(i < argc-1)
+          header_csv = atoi(argv[++i]);
 
       i++;
     }
@@ -370,7 +376,7 @@ int main(int argc, char **argv)
   char *infile, *outfile, *noisefile = NULL, *infile2 = NULL;
   int N_steer, N_pyr, N_iteration, Na, verbose = 0;
   int nxout = 0, nyout = 0, noise, edge_handling, add_smooth, crop;
-  int gray, statistics, statistics_csv;
+  int gray, statistics, statistics_csv, header_csv;
   int cmask[4] = { 0 };
   unsigned long seed;
   float interpWeight = -1; // negative value <--> no interpolation
@@ -380,7 +386,7 @@ int main(int argc, char **argv)
     argc, argv, &infile, &outfile, N_steer, N_pyr, N_iteration,
     Na, noise, &noisefile, nxout, nyout, edge_handling,
     add_smooth, crop, seed, cmask, verbose,
-    &infile2, interpWeight, gray, statistics, statistics_csv);
+    &infile2, interpWeight, gray, statistics, statistics_csv, header_csv);
 
   if( result ) { // if the parameters are correct
     // read input image
@@ -567,7 +573,7 @@ int main(int argc, char **argv)
         statsStruct stats;
         allocate_stats(&stats, params, nz);
         analysis(&stats, data_in_crop, params);
-        print_statistics_csv(stats, params, nz);
+        print_statistics_csv(stats, params, nz, header_csv);
         free_stats(stats, params, nz);
         free(data_in_crop.image);
         if ( interpWeight >= 0 )

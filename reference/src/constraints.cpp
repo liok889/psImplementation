@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <string>
 
 #include "ps_lib.h"
 #include "toolbox.h"
@@ -223,36 +224,94 @@ void write_statistics(const statsStruct stats, const paramsStruct params, int nz
   fclose(fp);
 }
 
-// Print the summary statistics relevant for synthesis as a single CSV line to
-// stdout (no header). The order matches the "raw" array of the JavaScript
-// implementation's JSON/CSV export (web/js/statsjson.js): pixelStats, skewLow,
-// kurtLow, varHigh, magMeans, autoCorLow, autoCorMag, cousinMagCor,
-// parentMagCor, parentRealCor. Grayscale (nz == 1).
-void print_statistics_csv(const statsStruct stats, const paramsStruct params, int nz)
+// Print the summary statistics relevant for synthesis as a CSV to stdout. The
+// column order matches the "raw" array of the JavaScript implementation's export
+// (web/js/statsjson.js): pixelStats, skewLow, kurtLow, varHigh, magMeans,
+// autoCorLow, autoCorMag, cousinMagCor, parentMagCor, parentRealCor.
+// If header != 0, a first line of abbreviated column names is printed; the name
+// encodes the origin of each statistic (scale s, orientation o, lag dx/dy,
+// parent real/imag band). Grayscale (nz == 1). Header and values are built in a
+// single traversal so they cannot drift out of sync.
+void print_statistics_csv(const statsStruct stats, const paramsStruct params,
+                          int nz, int header)
 {
-  int P = params.N_pyr, K = params.N_steer, Na = params.Na;
-  int i, k, first = 1;
+  int P = params.N_pyr, K = params.N_steer, Na = params.Na, hNa = (Na - 1) / 2;
+  int i, j, k, ind, sc, o, a, b, dx, dy;
   (void) nz; // this CSV mode is defined for the grayscale (nz == 1) layout
-  #define EMIT(v) do { if (!first) putchar(','); printf("%.9g", (double)(v)); first = 0; } while (0)
+  std::string hdr, val;
+  char nm[80], vb[40];
+  bool first = true;
+  // append one column (name + value) keeping the two lines aligned
+  #define ADD(name, value) do { \
+      if (!first) { hdr += ','; val += ','; } first = false; \
+      hdr += (name); snprintf(vb, sizeof vb, "%.9g", (double)(value)); val += vb; \
+    } while (0)
 
-  for (i = 0; i < N_PIXELSTATS; i++)              EMIT(stats.pixelStats[i]);   // 1
-  for (i = 0; i < 1 + P; i++)                     EMIT(stats.skewLow[i]);      // 2
-  for (i = 0; i < 1 + P; i++)                     EMIT(stats.kurtLow[i]);      // 3
-  EMIT(stats.varHigh[0]);                                                      // 4
-  for (i = 0; i < P * K; i++)                     EMIT(stats.magMeans[i]);     // 5
+  // 1. pixel marginal statistics
+  const char *pn[6] = { "pix_min", "pix_max", "pix_mean", "pix_var", "pix_skew", "pix_kurt" };
+  for (i = 0; i < N_PIXELSTATS; i++) ADD(pn[i], stats.pixelStats[i]);
+
+  // 2-3. low-band skewness / kurtosis per scale (s0 = finest ... sP = coarsest)
+  for (i = 0; i < 1 + P; i++) { snprintf(nm, sizeof nm, "skewLow_s%d", i); ADD(nm, stats.skewLow[i]); }
+  for (i = 0; i < 1 + P; i++) { snprintf(nm, sizeof nm, "kurtLow_s%d", i); ADD(nm, stats.kurtLow[i]); }
+
+  // 4. high-pass residual variance
+  ADD("varHigh", stats.varHigh[0]);
+
+  // 5. mean magnitude per oriented band (scale s, orientation o)
+  for (ind = 0; ind < P * K; ind++) {
+    sc = ind / K; o = ind % K;
+    snprintf(nm, sizeof nm, "magMean_s%d_o%d", sc, o); ADD(nm, stats.magMeans[ind]);
+  }
+
+  // 6. low-band auto-correlation: scale s, lag (dx,dy)
   for (i = 0; i < 1 + P; i++)
-    for (k = 0; k < Na * Na; k++)                 EMIT(stats.autoCorLow[i][k]);// 6
-  for (i = 0; i < P * K; i++)
-    for (k = 0; k < Na * Na; k++)                 EMIT(stats.autoCorMag[i][k]);// 7
-  for (i = 0; i < P; i++)
-    for (k = 0; k < K * K; k++)                   EMIT(stats.cousinMagCor[i][k]);// 8
-  for (i = 0; i < P - 1; i++)
-    for (k = 0; k < K * K; k++)                   EMIT(stats.parentMagCor[i][k]);// 9
-  for (i = 0; i < P - 1; i++)
-    for (k = 0; k < 2 * K * K; k++)               EMIT(stats.parentRealCor[i][k]);// 10
+    for (k = 0; k < Na * Na; k++) {
+      dx = k % Na - hNa; dy = k / Na - hNa;
+      snprintf(nm, sizeof nm, "autoCorrLow_s%d_dx%d_dy%d", i, dx, dy);
+      ADD(nm, stats.autoCorLow[i][k]);
+    }
 
-  putchar('\n');
-  #undef EMIT
+  // 7. band-magnitude auto-correlation: scale s, orientation o, lag (dx,dy)
+  for (sc = 0; sc < P; sc++) for (o = 0; o < K; o++) {
+    ind = o + sc * K;
+    for (k = 0; k < Na * Na; k++) {
+      dx = k % Na - hNa; dy = k / Na - hNa;
+      snprintf(nm, sizeof nm, "autoCorrMag_s%d_o%d_dx%d_dy%d", sc, o, dx, dy);
+      ADD(nm, stats.autoCorMag[ind][k]);
+    }
+  }
+
+  // 8. magnitude cross-correlation, same scale: scale s, orientations o(a),o(b)
+  for (i = 0; i < P; i++)
+    for (k = 0; k < K * K; k++) {
+      a = k / K; b = k % K;
+      snprintf(nm, sizeof nm, "cousinMagCorr_s%d_o%d_o%d", i, a, b);
+      ADD(nm, stats.cousinMagCor[i][k]);
+    }
+
+  // 9. magnitude cross-correlation with coarser scale: scales s,s+1, orient a,b
+  for (i = 0; i < P - 1; i++)
+    for (k = 0; k < K * K; k++) {
+      a = k / K; b = k % K;
+      snprintf(nm, sizeof nm, "parentMagCorr_s%d_%d_o%d_o%d", i, i + 1, a, b);
+      ADD(nm, stats.parentMagCor[i][k]);
+    }
+
+  // 10. real/phase cross-correlation with coarser scale: orient a, parent band
+  //     b = real (re) or imaginary (im) part of parent orientation
+  for (i = 0; i < P - 1; i++)
+    for (k = 0; k < 2 * K * K; k++) {
+      a = k / (2 * K); b = k % (2 * K);
+      const char *part = (b < K) ? "re" : "im"; int po = (b < K) ? b : b - K;
+      snprintf(nm, sizeof nm, "parentRealCorr_s%d_%d_o%d_%s%d", i, i + 1, a, part, po);
+      ADD(nm, stats.parentRealCor[i][k]);
+    }
+  (void) j;
+
+  if (header) { fputs(hdr.c_str(), stdout); putchar('\n'); }
+  fputs(val.c_str(), stdout); putchar('\n');
+  #undef ADD
 }
 
 // Apply an integer shift of (ofx, ofy) to an image

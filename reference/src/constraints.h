@@ -20,7 +20,7 @@
 void allocate_stats(statsStruct *stats, const paramsStruct params, int nz);
 void free_stats(statsStruct stats, const paramsStruct params, int nz);
 void write_statistics(const statsStruct stats, const paramsStruct params, int nz);
-void print_statistics_csv(const statsStruct stats, const paramsStruct params, int nz);
+void print_statistics_csv(const statsStruct stats, const paramsStruct params, int nz, int header);
 void shift(float *out, const float *in, int ofx, int ofy, int nx, int ny, int nz);
 
 /* computation of moment or statistics */
