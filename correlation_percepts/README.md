@@ -1,9 +1,9 @@
 # Bivariate correlation stimuli
 
 Generate bivariate datasets at a **chosen sample Pearson correlation**, render them
-as a **scatterplot** or **parallel coordinates** (D3 + canvas), and export
-**256×256 PNGs** that can be fed through the Portilla–Simoncelli pipeline in this
-repo. This mirrors the stimulus generation in Rensink & Baldridge (2010) and
+as a **scatterplot**, **parallel coordinates**, or an **ordered line** (D3 + canvas),
+and export **256×256 PNGs** that can be fed through the Portilla–Simoncelli pipeline
+in this repo. This mirrors the stimulus generation in Rensink & Baldridge (2010) and
 Harrison et al. (2014), *"Ranking Visualizations of Correlation Using Weber's
 Law"* — a natural pairing with PS texture statistics for studying correlation
 percepts.
@@ -101,7 +101,7 @@ rasterizes it to a 256×256 grayscale stimulus, and runs it through the PS
 statistics tool (`../cli/ps_stats`), printing the CSV to stdout:
 
 ```bash
-cli/corr_stats <n> <r> <scatter|parallel> [seed] [-- <ps_stats flags>]
+cli/corr_stats <n> <r> <scatter|parallel|ordered> [seed] [-- <ps_stats flags>]
 
 # examples
 cli/corr_stats 200 0.8 scatter 1               # 1270 PS stats for r=0.8 scatter
