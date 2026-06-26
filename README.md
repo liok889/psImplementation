@@ -127,6 +127,9 @@ single-threaded (native = real FFTW, JS = JavaScriptCore):
 bash bench/run.sh
 ```
 
+A formatted standalone report of these results is in
+[`bench/report.html`](bench/report.html).
+
 | stage | native C++ (FFTW) | JavaScript (jsc) | JS / C++ |
 |---|--:|--:|--:|
 | **analysis** (once) | ~26 ms | ~72 ms | **~2.8×** |
@@ -171,20 +174,122 @@ linear index `i + j*nx + k*nx*ny`, and FFTW transform conventions (forward
 `e^{-2πi}`, inverse unnormalized then divided by `N`). Statistic array layouts
 mirror `write_statistics()` in `constraints.cpp`.
 
-## The statistics (what gets validated)
+## The statistics: what they are and how they're computed
 
-Per the model, for `P` scales, `K` orientations, neighborhood `Na`:
+The model summarizes a texture by a fixed set of **scalar constraints** measured on
+its steerable-pyramid decomposition. For the default parameters (`P=4` scales,
+`K=4` orientations, `Na=7` neighborhood, grayscale) there are exactly **1270**
+of them:
 
-- **marginal** pixel stats (min/max/mean/var/skew/kurtosis), per-scale low-band
-  skew/kurtosis, high-pass variance;
-- **raw auto-correlations** of the low-band at each scale and of each oriented
-  sub-band magnitude (central `Na×Na`);
-- **magnitude cross-correlations** across orientation (cousins) and across scale
-  (parents);
-- **phase / real-part cross-correlations** across scale.
+| # | group | what it represents | formula | count |
+|---|---|---|---|--:|
+| 1 | `pixelStats` | marginal stats of the image: **min, max, mean, variance, skewness, kurtosis** | 6 | **6** |
+| 2 | `skewLow` | **skewness** of the low-pass image at each scale (finest→coarsest) | 1+P | **5** |
+| 3 | `kurtLow` | **kurtosis** of the low-pass image at each scale | 1+P | **5** |
+| 4 | `varHigh` | **variance** of the high-pass residual | nz | **1** |
+| 5 | `magMeans` | **mean magnitude** of each oriented sub-band | P·K | **16** |
+| 6 | `autoCorLow` | central **Na×Na auto-correlation** of each low-pass image | (1+P)·Na² | **245** |
+| 7 | `autoCorMag` | central **Na×Na auto-correlation** of each sub-band **magnitude** | P·K·Na² | **784** |
+| 8 | `cousinMagCor` | **magnitude cross-correlation across orientations** (same scale) | P·K² | **64** |
+| 9 | `parentMagCor` | **magnitude cross-correlation with the coarser scale** | (P−1)·K² | **48** |
+| 10 | `parentRealCor` | **real-part / phase cross-correlation with the coarser scale** | (P−1)·2K² | **96** |
+| | | | **total** | **1270** |
 
-For the default sample (256×256, P=4, K=4, Na=7) that's ~1100 scalar constraints,
-all matched against the reference.
+Verification: the JS serializer (and the app's JSON export) emits exactly **1270**
+finite scalars; the reference's `write_statistics()` text dump writes **1254** —
+the difference is the 16 `magMeans`, which the reference computes and *imposes*
+during synthesis but does not write to its statistics file
+(`1270 − 16 = 1254`, both confirmed empirically). Counting *independent* degrees of
+freedom instead of stored numbers (auto-correlations are point-symmetric, so only
+`(Na²+1)/2 = 25` of each 49-block is independent; correlation matrices are
+symmetric) gives ≈710, matching the figure cited in the Portilla–Simoncelli paper.
+
+### How each group is computed
+
+All quantities are computed on the pyramid built by `create_pyramid` (high-pass
+residual, `P` low-pass residuals, and `P·K` complex oriented sub-bands). Bands are
+made zero-mean before correlations.
+
+- **`pixelStats`** — min, max, and the first four moments taken directly over all
+  image pixels (variance = 2nd central moment, skewness = 3rd⁄σ³, kurtosis = 4th⁄σ⁴).
+  Computed before the tiny stabilizing noise is added.
+- **`skewLow` / `kurtLow`** — at each scale the low-pass image is taken (a second
+  low-pass is applied first, as in the reference), and its skewness/kurtosis are
+  computed about zero mean (variance read from the auto-correlation center). These
+  capture how the brightness distribution's *shape* changes from fine to coarse.
+- **`varHigh`** — variance (2nd moment about 0) of the high-pass residual: the
+  energy in the finest, non-oriented high frequencies.
+- **`magMeans`** — for each oriented sub-band, the complex **magnitude**
+  `√(re²+im²)` is formed and its mean over the band stored. The mean is then
+  subtracted so the magnitude correlations below describe *fluctuations*.
+- **`autoCorLow` / `autoCorMag`** — the **central `Na×Na` block** of the
+  auto-correlation, computed efficiently as `iFFT(|FFT(x)|²)` (Wiener–Khinchin) and
+  normalized; the central value (lag 0) equals the variance. `autoCorLow` runs on
+  each low-pass image (periodicity / global layout); `autoCorMag` runs on each
+  sub-band's mean-removed magnitude (spatial extent, spacing and regularity of
+  oriented features). See *the neighborhood `Na`* below.
+- **`cousinMagCor`** — the `K×K` Gram matrix `M·Mᵀ⁄N` of the `K` mean-removed
+  magnitude bands at one scale (`M` stacks the bands as rows). It captures how
+  feature *energy* co-occurs across orientations (corners, junctions, isotropy vs.
+  anisotropy).
+- **`parentMagCor`** — cross-correlation (`K×K`, `M_fine·M_parentᵀ⁄N`) between a
+  scale's `K` magnitude bands and the next-**coarser** scale's bands. The coarser
+  bands ("parents") are Fourier-**upsampled** to align with the finer resolution,
+  magnitude taken, mean removed. Captures coarse-to-fine energy consistency.
+- **`parentRealCor`** — cross-correlation between a scale's `K` **real** (signed)
+  sub-bands and the coarser scale's **phase-doubled** parents — the real and
+  imaginary parts of the upsampled coarse band with its phase doubled
+  (`2·atan2(im,re)`), giving `2K` bands. This encodes the **phase** relationships
+  across scale that keep edges, gradients and shadows aligned rather than smeared.
+
+### The neighborhood `Na`
+
+`Na` is the **side length, in pixels, of the square window over which the
+auto-correlation statistics are measured** (default `7`, must be odd; the `-N`
+flag / the **Na** field in the app). The full auto-correlation of a band is
+computed via `iFFT(|FFT|²)`, and only the **central `Na × Na` block** is kept — the
+correlation coefficients for integer pixel lags `(dx,dy) ∈ {−hNa … +hNa}²`, where
+`hNa = (Na−1)/2`. So `Na=7 → hNa=3 →` lags from −3 to +3 in each direction = a 7×7
+grid of 49 values; the center (lag 0,0) is the variance.
+
+It is a **per-scale** window: a 1-pixel lag at scale *s* equals `2^s` pixels in the
+original image, so the same small `Na` reaches farther at coarser scales. `Na` must
+be odd and smaller than every scale's dimensions, so the number of scales is clamped
+to `P_max = floor(log₂(min(nx,ny)) − log₂(Na+1) − 1)` (the app does this on upload).
+On the synthesis side, imposing an `Na×Na` auto-correlation needs support
+`2·Na−1 = 13`, and the linear system solved has size `(Na²+1)/2 = 25` (the
+independent half, by the symmetry `Ac(i,j)=Ac(−i,−j)`).
+
+### Why only the central `Na × Na` block?
+
+A 7×7 window sounds tiny next to a 256×256 image, but it is the right amount of
+information for three reasons:
+
+1. **The pyramid already covers long range.** A lag is measured at each scale's
+   resolution, so a 7×7 window reaches ±3·2ˢ original pixels at scale *s*: ±3, ±6,
+   ±12, ±24, ±48 px across the four scales (and the coarsest 16×16 low residual
+   spans the whole image's low-frequency structure). Long-range correlations in the
+   original become **short-range correlations at a coarse scale**. Between the
+   pyramid and `Na` the model constrains structure from ~1 px to ~100 px — not tiny.
+
+2. **The full auto-correlation is just the power spectrum, and that's not enough.**
+   Capturing *all* lags of the auto-correlation is mathematically equivalent to
+   fixing the entire power spectrum. Matching only the spectrum (plus pixel
+   marginals) produces phase-randomized "spectral noise", which looks nothing like
+   structured texture. The PS insight is that what carries texture appearance is a
+   **compact** set of correlations of **nonlinear features** (sub-band
+   *magnitudes*) **across orientation and scale** — groups 5–10 above — not the
+   full second-order spectrum. The short auto-correlations supply local geometry;
+   the cross-correlations supply the feature interactions.
+
+3. **A compact summary models the texture *class*, not the exemplar.** The goal is
+   to synthesize *new* samples that look like the same material, not to reproduce
+   the input. Constraining the full N×N auto-correlation would over-fit one image
+   (and large-lag estimates are noisy anyway, computed from few independent
+   samples). A small, reliable neighborhood generalizes.
+
+So the central block is deliberate: short-range geometry per scale, with everything
+longer-range handled by the multi-scale + cross-scale structure of the model.
 
 ## Scope & limitations
 
