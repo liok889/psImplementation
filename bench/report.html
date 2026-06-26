@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portilla–Simoncelli — JS vs native C++ benchmark</title>
+<style>
+  :root { --ink:#1b1f27; --muted:#5f6b7d; --line:#e3e7ee; --bg:#f7f8fa; --card:#fff;
+          --js:#5b6cff; --cpp:#16a37f; --accent:#3257d6; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  .wrap { max-width:860px; margin:0 auto; padding:40px 24px 70px; }
+  h1 { font-size:25px; margin:0 0 4px; letter-spacing:-.01em; }
+  h2 { font-size:17px; margin:34px 0 12px; }
+  .sub { color:var(--muted); margin:0 0 6px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:20px 22px; margin:16px 0; box-shadow:0 1px 2px rgba(20,30,50,.04); }
+  table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; }
+  th,td { text-align:right; padding:9px 12px; border-bottom:1px solid var(--line); }
+  th:first-child,td:first-child { text-align:left; }
+  thead th { color:var(--muted); font-weight:600; font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  tbody tr:last-child td { border-bottom:0; }
+  .ratio { font-weight:700; color:var(--accent); }
+  .meta { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:6px 26px; }
+  .meta div { color:var(--muted); font-size:13.5px; }
+  .meta b { color:var(--ink); font-weight:600; }
+  .bars { margin:6px 0 2px; }
+  .barrow { display:grid; grid-template-columns:120px 1fr 96px; align-items:center; gap:10px; margin:9px 0; }
+  .barrow .lbl { font-size:13px; color:var(--muted); }
+  .track { background:#eef0f5; border-radius:6px; height:22px; position:relative; overflow:hidden; }
+  .fill { height:100%; border-radius:6px; display:flex; align-items:center; }
+  .fill.cpp { background:var(--cpp); }
+  .fill.js { background:var(--js); }
+  .fill span { color:#fff; font-size:11.5px; font-weight:600; padding:0 8px; white-space:nowrap; }
+  .val { font-size:13px; text-align:right; font-variant-numeric:tabular-nums; }
+  .legend-dot { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; vertical-align:middle; }
+  ul.notes { margin:8px 0 0; padding-left:20px; color:var(--muted); font-size:13.5px; }
+  ul.notes li { margin:6px 0; }
+  code { background:#eef0f5; padding:1px 6px; border-radius:5px; font-size:13px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .foot { color:var(--muted); font-size:12.5px; margin-top:30px; }
+  .pill { display:inline-block; background:#eef1f7; color:#3257d6; border-radius:20px;
+    padding:2px 10px; font-size:12px; font-weight:600; margin-left:8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Portilla–Simoncelli texture model — performance report</h1>
+  <p class="sub">JavaScript port vs. native C++ reference &mdash; analysis and synthesis timed separately.</p>
+
+  <div class="card">
+    <h2 style="margin-top:0">Configuration</h2>
+    <div class="meta">
+      <div>Machine: <b>Apple M4 Pro</b> (10P + 4E cores)</div>
+      <div>OS: <b>macOS 15.7.2</b> (arm64)</div>
+      <div>Memory: <b>24 GB</b></div>
+      <div>C++ build: <b>Apple clang 17</b>, <code>-O3 -march=native</code></div>
+      <div>FFT (native): <b>FFTW 3 (libfftw3f)</b></div>
+      <div>JS engine: <b>JavaScriptCore</b> (<code>jsc</code>)</div>
+      <div>Image: <b>256 × 256</b>, grayscale</div>
+      <div>Parameters: <b>P=4</b> scales, <b>K=4</b> orientations, <b>Na=7</b></div>
+      <div>Synthesis: <b>50 iterations</b></div>
+      <div>Threading: <b>single-threaded</b> (both)</div>
+    </div>
+  </div>
+
+  <h2>Results</h2>
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>Stage</th><th>native C++ (FFTW)</th><th>JavaScript (jsc)</th><th>JS / C++</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Analysis (once)</td><td>25.3 ms</td><td>72.0 ms</td><td class="ratio">2.85×</td></tr>
+        <tr><td>Synthesis (50 iterations)</td><td>2.09 s</td><td>6.12 s</td><td class="ratio">2.93×</td></tr>
+        <tr><td>Synthesis (per iteration)</td><td>41.9 ms</td><td>122.5 ms</td><td class="ratio">2.93×</td></tr>
+      </tbody>
+    </table>
+    <p class="sub" style="margin:12px 0 0; font-size:12.5px">Medians over repeated runs (analysis: 9 / 7 runs; synthesis: 6 / 3 runs), one warm-up discarded.
+      Native min 24.7 ms / 2.08 s; JS min 69 ms / 6.11 s.</p>
+  </div>
+
+  <h2>Relative speed</h2>
+  <div class="card">
+    <div style="margin-bottom:10px; font-size:13px; color:var(--muted)">
+      <span class="legend-dot" style="background:var(--cpp)"></span>native C++
+      <span class="legend-dot" style="background:var(--js); margin-left:16px"></span>JavaScript
+    </div>
+    <div class="bars">
+      <div class="barrow">
+        <div class="lbl">Analysis</div>
+        <div class="track"><div class="fill cpp" style="width:35.1%"><span>25.3 ms</span></div></div>
+        <div class="val">1.0×</div>
+      </div>
+      <div class="barrow">
+        <div class="lbl"></div>
+        <div class="track"><div class="fill js" style="width:100%"><span>72.0 ms</span></div></div>
+        <div class="val">2.85×</div>
+      </div>
+      <div class="barrow" style="margin-top:18px">
+        <div class="lbl">Synthesis / iter</div>
+        <div class="track"><div class="fill cpp" style="width:34.2%"><span>41.9 ms</span></div></div>
+        <div class="val">1.0×</div>
+      </div>
+      <div class="barrow">
+        <div class="lbl"></div>
+        <div class="track"><div class="fill js" style="width:100%"><span>122.5 ms</span></div></div>
+        <div class="val">2.93×</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Methodology</h2>
+  <div class="card">
+    <ul class="notes" style="font-size:14px">
+      <li>Both implementations process the <b>same pixels</b> (a numeric fixture decoded once from the
+        reference PNG) with identical parameters.</li>
+      <li><code>analysis()</code> and <code>synthesis()</code> are timed <b>separately</b> by a dedicated
+        harness (<code>bench/bench_main.cpp</code> / <code>bench/bench_js.js</code>) that calls each function
+        directly &mdash; not the stock binary, which runs both plus image I/O.</li>
+      <li>Each timed region includes that stage's own setup (filter construction, pyramid allocation, FFT
+        plans), so the comparison is end-to-end per stage.</li>
+      <li>Reproduce with <code>bash bench/run.sh</code>.</li>
+    </ul>
+  </div>
+
+  <h2>Interpretation</h2>
+  <div class="card">
+    <ul class="notes" style="font-size:14px">
+      <li>The pure-JavaScript port runs <b>~3× slower</b> than optimized native C++ &mdash; a strong result,
+        given the native side uses FFTW's hand-tuned SIMD kernels while the JS uses a custom
+        double-precision FFT with no SIMD.</li>
+      <li><b>Single-threaded</b> is the fair comparison (JS is single-threaded) <i>and</i> the fastest native
+        configuration here: enabling the reference's OpenMP + FFTW threads does <b>not</b> help at 256×256 &mdash;
+        thread-spawn overhead dominates, and the multi-threaded binary is actually slower (~4.5 s wall for the
+        full run vs. ~2.1 s single-threaded synthesis).</li>
+      <li>Numbers are from JavaScriptCore. A browser's V8 (Chrome) may differ somewhat, but the
+        same single-threaded, no-SIMD constraints apply.</li>
+      <li>Cost scales as O(N log N) per FFT; both stages grow with image size, and synthesis additionally
+        scales linearly with iteration count.</li>
+    </ul>
+  </div>
+
+  <p class="foot">Generated from <code>bench/run.sh</code> on Apple M4 Pro · grayscale path · P=4, K=4, Na=7, 50 iterations.</p>
+
+</div>
+</body>
+</html>
