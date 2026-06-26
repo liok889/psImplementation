@@ -4,7 +4,52 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var state = { gray: null, cropped: null, analysis: null, params: null, stop: false, running: false };
+  var state = { gray: null, cropped: null, analysis: null, params: null, stop: false,
+                running: false, synthStats: null, synthDims: null, lastSeed: null };
+
+  // ---- statistics serialization / export ----
+  function f64ToArr(a) { var o = new Array(a.length); for (var i = 0; i < a.length; i++) o[i] = a[i]; return o; }
+  function matToArr(rows, n) { var o = []; for (var i = 0; i < n; i++) o.push(f64ToArr(rows[i])); return o; }
+  // Serialize the full statistics container into a structured plain object.
+  // Layout mirrors write_statistics() in constraints.cpp (grayscale).
+  function statsToObject(stats, params, dims, label) {
+    var P = params.N_pyr, K = params.N_steer, Na = params.Na;
+    var total = 6 + 2 * (1 + P) + 1 + P * K + (1 + P) * Na * Na +
+                P * K * Na * Na + P * K * K + (P - 1) * K * K + (P - 1) * 2 * K * K;
+    return {
+      meta: { source: label, nx: dims.nx, ny: dims.ny, nz: 1, N_pyr: P, N_steer: K,
+              Na: Na, totalScalars: total },
+      legend: {
+        pixelStats: "[min, max, mean, variance, skewness, kurtosis]",
+        skewLow: "low-band skewness per scale (finest..coarsest), length 1+P",
+        kurtLow: "low-band kurtosis per scale, length 1+P",
+        varHigh: "high-pass residual variance",
+        magMeans: "mean magnitude of each oriented band, P*K (scale-major)",
+        autoCorLow: "central Na x Na auto-correlation of each low-band, [1+P][Na*Na]",
+        autoCorMag: "central Na x Na auto-correlation of each band magnitude, [P*K][Na*Na]",
+        cousinMagCor: "magnitude cross-correlation across orientation per scale, [P][K*K]",
+        parentMagCor: "magnitude cross-correlation with coarser scale, [P-1][K*K]",
+        parentRealCor: "real/phase cross-correlation with coarser scale, [P-1][2K*K]"
+      },
+      pixelStats: f64ToArr(stats.pixelStats),
+      skewLow: f64ToArr(stats.skewLow),
+      kurtLow: f64ToArr(stats.kurtLow),
+      varHigh: f64ToArr(stats.varHigh),
+      magMeans: f64ToArr(stats.magMeans),
+      autoCorLow: matToArr(stats.autoCorLow, 1 + P),
+      autoCorMag: matToArr(stats.autoCorMag, P * K),
+      cousinMagCor: matToArr(stats.cousinMagCor, P),
+      parentMagCor: matToArr(stats.parentMagCor, P - 1),
+      parentRealCor: matToArr(stats.parentRealCor, P - 1)
+    };
+  }
+  function downloadJSON(obj, filename) {
+    var blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); a.parentNode && a.parentNode.removeChild(a); }, 200);
+  }
 
   // ---- image helpers ----
   function loadImage(src) {
@@ -112,6 +157,11 @@
     renderPyramid(res.pyramid, params);
     renderStats(res.stats, params, dt);
     $('targetCanvas') && renderToCanvas($('targetCanvas'), cr.data.image, cr.data.nx, cr.data.ny, { size: 220 });
+    // reset stats viewer / synthesized-stats export for the new analysis
+    $('statsDump').classList.add('hidden'); $('statsDump').textContent = '';
+    $('showAllBtn').textContent = 'Show all statistics';
+    $('exportSynthStatsBtn').classList.add('hidden'); state.synthStats = null;
+
     $('filtersPanel').classList.remove('hidden');
     $('analysisPanel').classList.remove('hidden');
     $('statsPanel').classList.remove('hidden');
@@ -179,12 +229,20 @@
   async function doSynthesize() {
     if (!state.analysis || state.running) return;
     state.running = true; state.stop = false;
-    $('synthBtn').disabled = true; $('stopBtn').disabled = false; $('dlLink').classList.add('hidden');
+    $('synthBtn').disabled = true; $('stopBtn').disabled = false;
+    $('dlLink').classList.add('hidden'); $('exportSynthStatsBtn').classList.add('hidden');
     var params = state.params, stats = state.analysis.stats;
     var nx = state.cropped.nx, ny = state.cropped.ny;
     var tex = { image: new Float64Array(nx * ny), nx: nx, ny: ny, nz: 1 };
     var filters = PS.Filters.computeFilters(nx, ny, params.N_pyr, params.N_steer, 0);
-    var mt = new PS.MT((Math.random() * 1e9) >>> 0);
+
+    // seed: blank -> fresh pseudo-random seed; otherwise the entered integer
+    var seedField = ($('seed').value || '').trim();
+    var seed;
+    if (seedField === '') seed = (Math.random() * 4294967296) >>> 0;
+    else { seed = parseInt(seedField, 10); if (!isFinite(seed)) seed = (Math.random() * 4294967296) >>> 0; seed = seed >>> 0; }
+    state.lastSeed = seed;
+    var mt = new PS.MT(seed);
 
     // initial noise (Line 3)
     var factor = Math.sqrt(stats.pixelStats[3]);
@@ -206,7 +264,7 @@
       var prog = Math.round(100 * (k + 1) / params.N_iteration);
       $('progBar').style.width = prog + '%';
       var m = PS.Stats.mean(tex.image, nx * ny, 0), v = PS.Stats.computeMoment(tex.image, m, 2, nx * ny, 0);
-      $('progText').textContent = 'iteration ' + (k + 1) + '/' + params.N_iteration +
+      $('progText').textContent = 'seed ' + state.lastSeed + '  ·  iteration ' + (k + 1) + '/' + params.N_iteration +
         '  ·  mean ' + m.toFixed(2) + '  var ' + v.toFixed(1);
       await yieldUI();
     }
@@ -218,13 +276,18 @@
     octx.putImageData(id, 0, 0);
     $('dlLink').href = out.toDataURL('image/png'); $('dlLink').classList.remove('hidden');
 
+    // re-analyze the synthesized texture so its statistics can be inspected/exported
+    var reAnalyzed = PS.Analysis.analysis({ image: new Float64Array(tex.image), nx: nx, ny: ny, nz: 1 }, params, new PS.MT(0)).stats;
+    state.synthStats = reAnalyzed; state.synthDims = { nx: nx, ny: ny };
+    $('exportSynthStatsBtn').classList.remove('hidden');
+
     var mo = PS.Stats.mean(tex.image, nx*ny, 0), vo = PS.Stats.computeMoment(tex.image, mo, 2, nx*ny, 0);
     var sko = PS.Stats.computeSkewness(tex.image, mo, vo, nx*ny, 0), kuo = PS.Stats.computeKurtosis(tex.image, mo, vo, nx*ny, 0);
-    $('convText').innerHTML = 'Converged output vs target &mdash; mean ' + mo.toFixed(2) + ' / ' + stats.pixelStats[2].toFixed(2) +
+    $('convText').innerHTML = 'Seed <b>' + state.lastSeed + '</b>. Converged output vs target &mdash; mean ' + mo.toFixed(2) + ' / ' + stats.pixelStats[2].toFixed(2) +
       ', var ' + vo.toFixed(1) + ' / ' + stats.pixelStats[3].toFixed(1) +
       ', skew ' + sko.toFixed(3) + ' / ' + stats.pixelStats[4].toFixed(3) +
       ', kurt ' + kuo.toFixed(3) + ' / ' + stats.pixelStats[5].toFixed(3) + '.';
-    $('progText').textContent = state.stop ? 'stopped' : 'done';
+    $('progText').textContent = (state.stop ? 'stopped' : 'done') + '  ·  seed ' + state.lastSeed;
     state.running = false; $('synthBtn').disabled = false; $('stopBtn').disabled = true;
   }
 
@@ -252,4 +315,25 @@
   $('analyzeBtn').addEventListener('click', doAnalyze);
   $('synthBtn').addEventListener('click', doSynthesize);
   $('stopBtn').addEventListener('click', function () { state.stop = true; });
+
+  $('showAllBtn').addEventListener('click', function () {
+    var pre = $('statsDump');
+    if (!pre.classList.contains('hidden')) { pre.classList.add('hidden'); this.textContent = 'Show all statistics'; return; }
+    if (!state.analysis) return;
+    pre.textContent = JSON.stringify(
+      statsToObject(state.analysis.stats, state.params, { nx: state.cropped.nx, ny: state.cropped.ny }, 'analysis(input)'), null, 2);
+    pre.classList.remove('hidden'); this.textContent = 'Hide statistics';
+  });
+  $('exportStatsBtn').addEventListener('click', function () {
+    if (!state.analysis) return;
+    downloadJSON(statsToObject(state.analysis.stats, state.params,
+      { nx: state.cropped.nx, ny: state.cropped.ny }, 'analysis(input)'), 'statistics_input.json');
+  });
+  $('exportSynthStatsBtn').addEventListener('click', function () {
+    if (!state.synthStats) return;
+    var obj = statsToObject(state.synthStats, state.params, state.synthDims,
+      'analysis(synthesized, seed=' + state.lastSeed + ')');
+    obj.meta.synthesisSeed = state.lastSeed;
+    downloadJSON(obj, 'statistics_synthesized_seed' + state.lastSeed + '.json');
+  });
 })();

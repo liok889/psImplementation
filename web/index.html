@@ -57,6 +57,9 @@
   .hidden { display: none; }
   a.dl { color: var(--accent2); text-decoration: none; font-weight: 600; }
   .legend { font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+  pre.dump { margin-top: 14px; max-height: 460px; overflow: auto; background: #0b0d13;
+    border: 1px solid var(--line); border-radius: 8px; padding: 14px; font-size: 12px;
+    line-height: 1.45; color: #c7d0e0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .pill { display:inline-block; padding:2px 8px; border-radius:20px; background:var(--panel2);
     border:1px solid var(--line); color:var(--muted); font-size:11px; margin-left:6px;}
 </style>
@@ -115,11 +118,18 @@
           against the C++ reference &mdash; see <span class="mono">test/run_validation.js</span>.</div>
       </div>
     </div>
+    <div class="row" style="margin-top:14px">
+      <button class="secondary" id="showAllBtn">Show all statistics</button>
+      <button class="secondary" id="exportStatsBtn">Download statistics (JSON)</button>
+    </div>
+    <pre id="statsDump" class="dump hidden"></pre>
   </div>
 
   <div class="panel hidden" id="synthPanel">
     <h2>5 &middot; Synthesis <small>impose the statistics on noise, iteratively</small></h2>
     <div class="row" style="margin-bottom:14px">
+      <div class="field"><label>Random seed</label>
+        <input type="text" id="seed" placeholder="random" style="width:120px"></div>
       <button id="synthBtn">Synthesize texture</button>
       <button class="secondary" id="stopBtn" disabled>Stop</button>
       <div style="flex:1; min-width:200px">
@@ -127,10 +137,15 @@
         <div class="muted mono" id="progText" style="margin-top:6px">idle</div>
       </div>
     </div>
+    <div class="legend" style="margin:-6px 0 12px">Leave the seed blank for a fresh pseudo-random texture each run;
+      enter an integer to reproduce a specific result. The seed actually used is reported below.</div>
     <div class="flex">
       <div class="tile"><canvas id="targetCanvas" width="220" height="220"></canvas><div class="cap">target (input)</div></div>
       <div class="tile"><canvas id="synthCanvas" width="220" height="220"></canvas><div class="cap">synthesized</div></div>
-      <div style="align-self:center"><a class="dl hidden" id="dlLink" download="synthesized.png">&#8595; download PNG</a></div>
+      <div style="align-self:center; display:flex; flex-direction:column; gap:10px">
+        <a class="dl hidden" id="dlLink" download="synthesized.png">&#8595; download PNG</a>
+        <button class="secondary hidden" id="exportSynthStatsBtn">Download synthesized stats (JSON)</button>
+      </div>
     </div>
     <div class="legend" id="convText"></div>
   </div>

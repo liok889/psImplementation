@@ -40,6 +40,15 @@ python3 -m http.server 8000
 Click **Load reference sample** (or **Upload image…**), then **Analyze**, then
 **Synthesize texture**.
 
+App features:
+- **Show all statistics** / **Download statistics (JSON)** — view or export the full
+  ~1270 scalar constraints (structured JSON with a legend for each field).
+- **Random seed** box in the synthesis panel — leave blank for a fresh pseudo-random
+  texture each run, or enter an integer to reproduce a specific result. The seed
+  actually used is reported under the preview (same seed ⇒ identical output).
+- **Download synthesized stats (JSON)** — re-analyzes the synthesized texture and
+  exports *its* statistics, so you can diff synthesized-vs-target constraints.
+
 ## Quick start — run the validation
 
 ```bash
