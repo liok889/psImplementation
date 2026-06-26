@@ -91,10 +91,11 @@
   }
 
   // hand the rendered image to the PS web interface (same origin, no download).
-  // A persistent reference to the PS window is kept so that subsequent sends
-  // FOCUS the existing window instead of re-opening it (re-opening reloads it,
-  // which dropped the update). The image is delivered live via BroadcastChannel
-  // (already-open window) and stashed in localStorage (freshly-opened window).
+  // The image is stashed in localStorage and the PS window is signalled (storage
+  // event + BroadcastChannel); an already-open PS window reloads itself and
+  // consumes it. A persistent reference to the PS window is kept so we FOCUS the
+  // existing window rather than re-opening it (re-opening would reload it from
+  // the sender side and race with the receiver).
   var psWin = null, psChannel = null;
   try { psChannel = new BroadcastChannel('ps_pipeline'); } catch (e) {}
   function sendToPS() {

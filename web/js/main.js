@@ -331,23 +331,28 @@
       window.focus();
     });
   }
+  // Consuming a second hand-off in place (re-running analysis without reloading)
+  // proved unreliable, so an already-open window RELOADS itself when a new image
+  // arrives and consumes it cleanly on load -- the same path the first send uses,
+  // which always works. The item is left in localStorage until the reloaded page
+  // reads it.
   (function initHandoff() {
-    // fresh-window case: read whatever was stashed before we loaded
+    // fresh-window case: consume whatever was stashed before we loaded
     try {
       var raw = localStorage.getItem('ps_incoming');
       if (raw) { localStorage.removeItem('ps_incoming'); handleHandoff(JSON.parse(raw)); }
     } catch (e) {}
-    // already-open case (fallback): a storage event fires in this tab
+
+    var reloading = false;
+    function reloadForNew() { if (reloading) return; reloading = true; try { location.reload(); } catch (e) {} }
+    // already-open window: a new send signals via the storage event ...
     window.addEventListener('storage', function (e) {
-      if (e.key !== 'ps_incoming' || !e.newValue) return;
-      var p; try { p = JSON.parse(e.newValue); } catch (err) { return; }
-      try { localStorage.removeItem('ps_incoming'); } catch (err) {}
-      handleHandoff(p);
+      if (e.key === 'ps_incoming' && e.newValue) reloadForNew();
     });
-    // already-open case (primary): live messages without any reload
+    // ... and/or the broadcast channel (whichever the browser delivers first)
     try {
       var bc = new BroadcastChannel('ps_pipeline');
-      bc.onmessage = function (ev) { handleHandoff(ev.data); };
+      bc.onmessage = function () { reloadForNew(); };
     } catch (e) {}
   })();
 })();
