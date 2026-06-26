@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bivariate correlation stimuli — scatter / parallel coordinates</title>
+<style>
+  :root { --bg:#0f1117; --panel:#171a23; --panel2:#1f2330; --ink:#e6e9ef;
+          --muted:#97a0b3; --accent:#5b9dff; --accent2:#46d39a; --line:#2a2f3d; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  header { padding:22px 26px 10px; border-bottom:1px solid var(--line); }
+  h1 { margin:0 0 4px; font-size:20px; font-weight:650; }
+  h1 span { color:var(--accent); }
+  .sub { color:var(--muted); max-width:820px; }
+  main { padding:18px 26px 60px; max-width:1040px; margin:0 auto; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:18px; margin:16px 0; }
+  .grid { display:grid; grid-template-columns:300px 1fr; gap:22px; align-items:start; }
+  @media (max-width:760px){ .grid{ grid-template-columns:1fr; } }
+  .field { margin-bottom:16px; }
+  .field label { display:block; color:var(--muted); font-size:12px; margin-bottom:6px; }
+  input[type=range]{ width:100%; }
+  input[type=number], input[type=text], select {
+    width:100%; background:var(--panel2); color:var(--ink); border:1px solid var(--line);
+    border-radius:7px; padding:8px 9px; }
+  .rowbtn { display:flex; gap:10px; margin-top:4px; }
+  button { background:var(--accent); color:#06122b; border:0; cursor:pointer;
+    font-weight:640; border-radius:8px; padding:9px 14px; font-size:13px; }
+  button.secondary { background:var(--panel2); color:var(--ink); border:1px solid var(--line); }
+  .bigval { font-size:26px; font-weight:700; font-variant-numeric:tabular-nums; }
+  canvas#display { width:100%; max-width:460px; background:#fff; border:1px solid var(--line);
+    border-radius:8px; image-rendering:auto; }
+  .muted{ color:var(--muted); } .mono{ font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .legend{ font-size:12px; color:var(--muted); margin-top:10px; }
+  .note{ color:var(--accent2); font-size:12.5px; margin-top:10px; min-height:1.2em; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Bivariate <span>correlation stimuli</span></h1>
+  <div class="sub">Generate bivariate data at a chosen <b>sample</b> Pearson correlation (the
+   exact-correlation method used by Rensink &amp; Baldridge and Harrison et&nbsp;al.), render it as a
+   <b>scatterplot</b> or <b>parallel coordinates</b>, and export a 256×256 PNG to feed through the
+   Portilla–Simoncelli pipeline.</div>
+</header>
+<main>
+  <div class="panel">
+    <div class="grid">
+      <div>
+        <div class="field">
+          <label>Correlation r &nbsp;(<span id="corrVal" class="mono">0.60</span>)</label>
+          <input type="range" id="corr" min="-1" max="1" step="0.01" value="0.6">
+        </div>
+        <div class="field">
+          <label>Number of points</label>
+          <input type="number" id="npoints" value="100" min="2" max="20000" step="1">
+        </div>
+        <div class="field">
+          <label>Visualization</label>
+          <select id="type">
+            <option value="scatter">Scatterplot</option>
+            <option value="parallel">Parallel coordinates</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Random seed (blank = random)</label>
+          <input type="text" id="seed" placeholder="random">
+        </div>
+        <div class="rowbtn">
+          <button id="regen" class="secondary">Regenerate</button>
+          <button id="export">Export 256×256 PNG</button>
+        </div>
+        <div class="note" id="exportNote"></div>
+      </div>
+      <div>
+        <canvas id="display" width="460" height="460"></canvas>
+        <div class="legend mono" id="achieved"></div>
+        <div class="legend">The exported PNG omits axes — just the data marks on white — so the PS
+          analysis sees the data layout as texture. Positive correlation makes parallel-coordinate
+          lines run roughly parallel; negative correlation makes them cross (an X pattern).</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="lib/d3.v7.min.js"></script>
+<script src="js/gen.js"></script>
+<script src="js/render.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

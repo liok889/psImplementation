@@ -1,0 +1,27 @@
+#!/bin/bash
+# Batch correlation-stimulus -> PS statistics, headless.
+# Generates a bivariate dataset at a set sample correlation, rasterizes it to a
+# 256x256 grayscale stimulus, and runs it through the PS statistics pipeline
+# (cli/ps_stats), printing the CSV to stdout.
+#
+# Usage:
+#   cli/corr_stats <n> <r> <scatter|parallel> [seed] [-- <ps_stats flags...>]
+# Example:
+#   cli/corr_stats 200 0.8 scatter 1 -- -H 1 > stats.csv
+set -e
+HERE="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
+JSC="${JSC:-/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc}"
+
+if [ $# -lt 3 ]; then
+  echo "usage: $(basename "$0") <n> <r> <scatter|parallel> [seed] [-- <ps_stats flags>]" >&2
+  exit 2
+fi
+n="$1"; r="$2"; type="$3"; shift 3
+seed=""
+if [ $# -gt 0 ] && [ "$1" != "--" ]; then seed="$1"; shift; fi
+[ "${1:-}" = "--" ] && shift   # remaining args are ps_stats flags
+
+tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+"$JSC" "$HERE/corr_to_fixture.js" -- "$ROOT" "$n" "$r" "$type" "$seed" > "$tmp/fix.txt"
+"$ROOT/cli/ps_stats" "$tmp/fix.txt" "$@"
