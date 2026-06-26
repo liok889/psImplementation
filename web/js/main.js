@@ -332,15 +332,22 @@
     });
   }
   (function initHandoff() {
+    // fresh-window case: read whatever was stashed before we loaded
     try {
       var raw = localStorage.getItem('ps_incoming');
       if (raw) { localStorage.removeItem('ps_incoming'); handleHandoff(JSON.parse(raw)); }
     } catch (e) {}
+    // already-open case (fallback): a storage event fires in this tab
     window.addEventListener('storage', function (e) {
       if (e.key !== 'ps_incoming' || !e.newValue) return;
       var p; try { p = JSON.parse(e.newValue); } catch (err) { return; }
       try { localStorage.removeItem('ps_incoming'); } catch (err) {}
       handleHandoff(p);
     });
+    // already-open case (primary): live messages without any reload
+    try {
+      var bc = new BroadcastChannel('ps_pipeline');
+      bc.onmessage = function (ev) { handleHandoff(ev.data); };
+    } catch (e) {}
   })();
 })();

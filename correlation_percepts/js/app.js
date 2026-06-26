@@ -90,9 +90,13 @@
     $('exportNote').textContent = 'saved ' + name + ' (256×256) — pipe it through the PS pipeline, e.g.  cli/ps_stats ' + name;
   }
 
-  // hand the rendered image to the PS web interface (same origin, no download):
-  // stash the PNG data URL in localStorage and open/reuse the PS window, which
-  // loads it and runs the analysis automatically.
+  // hand the rendered image to the PS web interface (same origin, no download).
+  // A persistent reference to the PS window is kept so that subsequent sends
+  // FOCUS the existing window instead of re-opening it (re-opening reloads it,
+  // which dropped the update). The image is delivered live via BroadcastChannel
+  // (already-open window) and stashed in localStorage (freshly-opened window).
+  var psWin = null, psChannel = null;
+  try { psChannel = new BroadcastChannel('ps_pipeline'); } catch (e) {}
   function sendToPS() {
     if (!state.data) return;
     var c = readControls();
@@ -104,8 +108,13 @@
       $('exportNote').textContent = 'Could not stash image (storage blocked): ' + e;
       return;
     }
-    var w = window.open('../web/index.html', 'ps_pipeline');
-    if (w) w.focus();
+    try { if (psChannel) psChannel.postMessage(payload); } catch (e) {}
+    if (psWin && !psWin.closed) {
+      try { psWin.focus(); } catch (e) {}           // already open: just focus, no reload
+    } else {
+      psWin = window.open('../web/index.html', 'ps_pipeline');
+      if (psWin) { try { psWin.focus(); } catch (e) {} }
+    }
     $('exportNote').textContent = 'Sent to the PS pipeline → analysis runs in the PS window.';
   }
 
