@@ -143,8 +143,11 @@ analysis and prints the synthesis-relevant summary statistics as a single CSV
 line to stdout (no header), then skips synthesis:
 
 ```bash
-./portilla_simoncelli data/sample.png unused.png -b 1 -S 1 > stats.csv
+./portilla_simoncelli data/sample.png -S 1 > stats.csv
 ```
+
+In `-S` mode the **output path is optional** and **grayscale is forced** (a color
+input is converted, with a note to stderr), so the single command above is enough.
 
 Add `-H 1` to also emit a **header row** of abbreviated column names that encode
 each statistic's origin — scale `s`, orientation `o`, lag `dx`/`dy`, parent
@@ -152,7 +155,7 @@ real/imag band — e.g. `autoCorrLow_s0_dx-3_dy-3`, `magMean_s1_o2`,
 `parentRealCorr_s2_3_o3_im3`:
 
 ```bash
-./portilla_simoncelli data/sample.png unused.png -b 1 -S 1 -H 1 > stats.csv
+./portilla_simoncelli data/sample.png -S 1 -H 1 > stats.csv
 ```
 
 The values and their order match the JavaScript implementation's raw export

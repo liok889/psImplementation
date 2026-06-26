@@ -19,5 +19,5 @@ if [ ! -x "$BIN" ]; then
 fi
 
 python3 tools/png_to_fixture.py >/dev/null
-"$BIN" reference/data/sample.png /tmp/ps_unused.png -b 1 -S 1 2>/dev/null > test/cpp_stats.csv
+"$BIN" reference/data/sample.png -S 1 2>/dev/null > test/cpp_stats.csv
 "$JSC" test/verify_cpp_csv.js

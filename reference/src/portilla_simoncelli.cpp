@@ -83,6 +83,8 @@ static void print_help(char *name)
   printf("-C4, \t Adjust real correlation (1) or not (0) (by default %i)\n", PAR_DEFAULT_REALCORR);
   printf("-o, \t Write the statistics evolution in a file (1) or not (0) (by default %i)\n", PAR_DEFAULT_STATISTICS);
   printf("-S, \t Print the summary statistics as a CSV line to stdout and skip synthesis (1) or not (0) (default 0)\n");
+  printf("    \t In -S mode the output path is optional and grayscale mode is forced.\n");
+  printf("    \t Example: %s input -S 1        (or add -H 1 for a header row)\n", name);
   printf("-H, \t With -S, also print a header row of abbreviated column names (1) or not (0) (default 0)\n");
 
   printf("\n");
@@ -139,14 +141,26 @@ static int read_parameters(int argc, char *argv[], char **infile,
                            int &statistics, int &statistics_csv, int &header_csv)
 {
   // display usage
-  if (argc < 3) {
+  if (argc < 2) {
     print_help(argv[0]);
     return 0;
   }
   else {
+    // The output path is optional in statistics-CSV mode (-S 1): nothing is
+    // written there. Pre-scan the arguments for -S so we know whether to consume
+    // a second positional argument (this also avoids a flag like "-b" being
+    // mistaken for the output filename when the output is omitted).
+    int wants_csv = 0;
+    for (int s = 2; s < argc; s++)
+      if (strcmp(argv[s], "-S") == 0 && s + 1 < argc) wants_csv = atoi(argv[s + 1]);
+
     int i = 1;
     *infile  = argv[i++];
-    *outfile = argv[i++];
+    *outfile = NULL;
+    if ( !wants_csv ) {
+      if ( i >= argc ) { print_help(argv[0]); return 0; }
+      *outfile = argv[i++];
+    }
 
     // default value initialization
     N_pyr         = PAR_DEFAULT_NPYR;
@@ -404,7 +418,7 @@ int main(int argc, char **argv)
   char *infile, *outfile, *noisefile = NULL, *infile2 = NULL;
   int N_steer, N_pyr, N_iteration, Na, verbose = 0;
   int nxout = 0, nyout = 0, noise, edge_handling, add_smooth, crop;
-  int gray, statistics, statistics_csv, header_csv;
+  int gray, statistics, statistics_csv = 0, header_csv = 0;
   int cmask[4] = { 0 };
   unsigned long seed;
   float interpWeight = -1; // negative value <--> no interpolation
@@ -417,6 +431,10 @@ int main(int argc, char **argv)
     &infile2, interpWeight, gray, statistics, statistics_csv, header_csv);
 
   if( result ) { // if the parameters are correct
+    // The CSV statistics mode is grayscale-only (it matches the JS export), so
+    // force grayscale to avoid silently emitting meaningless color-path numbers.
+    if ( statistics_csv ) gray = 1;
+
     // read input image
     imageStruct data_in;
     data_in.image = iio_read_image_float_split(infile, &data_in.nx, &data_in.ny,
@@ -429,6 +447,8 @@ int main(int argc, char **argv)
     if ( gray && nz == 3) {
       if ( verbose )
         printf("Using the grayscale mode\n");
+      if ( statistics_csv )
+        fprintf(stderr, "[-S] color input converted to grayscale (CSV stats are grayscale-only)\n");
       grayscale(data_in);
       nz = 1;
     }
