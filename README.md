@@ -71,6 +71,25 @@ parentRealCor        96       7.1473      3.034e-6     4.244e-7  PASS
 ALL GROUPS PASS
 ```
 
+## Command-line JS statistics tool
+
+A headless analog of the reference's `-S`/`-H` mode, using the JavaScript
+implementation (via JavaScriptCore `jsc`). It prints the synthesis-relevant
+statistics as CSV to stdout, in the same order — and with `-H 1`, the same
+abbreviated header names — as the C++ tool:
+
+```bash
+cli/ps_stats reference/data/sample.png            # one CSV line of values
+cli/ps_stats reference/data/sample.png -H 1       # header row + values
+cli/ps_stats reference/data/sample.png -s 3 -k 5 -N 5 -H 1
+cli/ps_stats test/fixture_gray.txt -H 1           # a .txt fixture also works
+```
+
+A PNG/JPG/TIFF input is decoded to a grayscale fixture via
+`tools/png_to_fixture.py`; a `.txt` fixture (`nx ny nz` then floats) is used
+directly. Its output's header row is byte-identical to `portilla_simoncelli
+… -S 1 -H 1`, and the values match to ~4e-7 (float-vs-double).
+
 ---
 
 ## How validation works (and why it's set up this way)
@@ -183,6 +202,7 @@ web/                       browser app (no build step)
     synthesis.js           iterative synthesis + adjust_constraints        [synthesis.cpp]
     main.js                UI controller (upload, render, synthesize)
 reference_harness/         C++ statistics harness (genuine reference code + FFTW shim)
+cli/ps_stats[.js]          headless JS stats tool (CSV to stdout; C++ -S/-H analog)
 tools/png_to_fixture.py    stdlib PNG decoder -> shared fixture
 test/
   run.sh                   full pipeline

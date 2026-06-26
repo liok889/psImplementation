@@ -1,0 +1,35 @@
+#!/bin/bash
+# Command-line JS statistics tool: the analog of the reference C++ "-S"/"-H" mode,
+# using the JavaScript implementation via JavaScriptCore (jsc). Prints the
+# synthesis-relevant summary statistics as CSV to stdout, in the same order (and,
+# with -H, with the same abbreviated header names) as the C++ tool.
+#
+# Usage:
+#   cli/ps_stats <image.png|fixture.txt> [-H 1] [-s P] [-k K] [-N Na]
+#
+# A PNG/JPG/TIFF is decoded to a grayscale fixture via tools/png_to_fixture.py
+# (Python stdlib); a .txt fixture (nx ny nz then floats) is used as-is.
+set -e
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+JSC="${JSC:-/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc}"
+
+if [ $# -lt 1 ]; then
+  echo "usage: $(basename "$0") <image.png|fixture.txt> [-H 1] [-s P] [-k K] [-N Na]" >&2
+  echo "  Runs the JS analysis and prints the synthesis statistics as a CSV line to stdout." >&2
+  echo "  -H 1   also print a header row of abbreviated column names (origin of each stat)." >&2
+  echo "  -s P   number of scales (default 4)   -k K   orientations (default 4)" >&2
+  echo "  -N Na  auto-correlation neighborhood (default 7)" >&2
+  exit 2
+fi
+
+input="$1"; shift
+case "$input" in
+  *.txt)
+    fixture="$(cd "$(dirname "$input")" && pwd)/$(basename "$input")" ;;
+  *)
+    tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+    python3 "$ROOT/tools/png_to_fixture.py" "$input" "$tmp" >/dev/null
+    fixture="$tmp/fixture_gray.txt" ;;
+esac
+
+"$JSC" "$ROOT/cli/ps_stats.js" -- "$ROOT" "$fixture" "$@"
