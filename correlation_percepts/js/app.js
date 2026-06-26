@@ -60,10 +60,8 @@
     });
   }
 
-  // render the current dataset to a clean 256x256 canvas and download as PNG
-  function exportPNG() {
-    if (!state.data) return;
-    var c = readControls();
+  // render the current dataset to a clean 256x256 canvas (marks only, no axes)
+  function renderExportCanvas(c) {
     var size = 256;
     var cv = document.createElement('canvas');
     cv.width = size; cv.height = size;
@@ -72,14 +70,43 @@
       width: size, height: size, type: c.type, drawAxes: false, pad: 10,
       alpha: c.opacity, pointRadius: c.markSize, lineWidth: c.markSize
     });
+    return cv;
+  }
+  function stimulusName(c) {
     var rTag = (c.r < 0 ? 'm' : '') + Math.abs(c.r).toFixed(2).replace('.', '');
-    var name = 'corr_' + c.type + '_r' + rTag + '_n' + c.n + '.png';
+    return 'corr_' + c.type + '_r' + rTag + '_n' + c.n;
+  }
+
+  // download the rendered 256x256 image as a PNG
+  function exportPNG() {
+    if (!state.data) return;
+    var c = readControls();
+    var name = stimulusName(c) + '.png';
     var a = document.createElement('a');
-    a.href = cv.toDataURL('image/png');
+    a.href = renderExportCanvas(c).toDataURL('image/png');
     a.download = name;
     document.body.appendChild(a); a.click();
     setTimeout(function () { a.parentNode && a.parentNode.removeChild(a); }, 200);
     $('exportNote').textContent = 'saved ' + name + ' (256×256) — pipe it through the PS pipeline, e.g.  cli/ps_stats ' + name;
+  }
+
+  // hand the rendered image to the PS web interface (same origin, no download):
+  // stash the PNG data URL in localStorage and open/reuse the PS window, which
+  // loads it and runs the analysis automatically.
+  function sendToPS() {
+    if (!state.data) return;
+    var c = readControls();
+    var payload = { dataURL: renderExportCanvas(c).toDataURL('image/png'),
+                    src: stimulusName(c), ts: Date.now() };
+    try {
+      localStorage.setItem('ps_incoming', JSON.stringify(payload));
+    } catch (e) {
+      $('exportNote').textContent = 'Could not stash image (storage blocked): ' + e;
+      return;
+    }
+    var w = window.open('../web/index.html', 'ps_pipeline');
+    if (w) w.focus();
+    $('exportNote').textContent = 'Sent to the PS pipeline → analysis runs in the PS window.';
   }
 
   // wiring: r / n / seed regenerate; switching vis type only redraws (same data)
@@ -91,6 +118,7 @@
   $('opacity').addEventListener('input', draw);
   $('regen').addEventListener('click', regenerate);
   $('export').addEventListener('click', exportPNG);
+  $('sendps').addEventListener('click', sendToPS);
   window.addEventListener('resize', draw);
 
   regenerate();

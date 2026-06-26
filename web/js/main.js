@@ -312,4 +312,35 @@
     obj.meta.synthesisSeed = state.lastSeed;
     downloadJSON(obj, 'statistics_synthesized_seed' + state.lastSeed + '.json');
   });
+
+  // ---- handoff from the correlation_percepts tool (same-origin, no upload) ----
+  // The sender writes a PNG data URL to localStorage['ps_incoming'] and opens/
+  // reuses this window. A freshly opened window reads it on load; an already-open
+  // window reacts live via the 'storage' event. We then run the analysis only.
+  var _lastHandoffTs = 0;
+  function handleHandoff(payload) {
+    if (!payload || !payload.dataURL) return;
+    if (payload.ts && payload.ts === _lastHandoffTs) return; // de-dupe
+    _lastHandoffTs = payload.ts || Date.now();
+    loadImage(payload.dataURL).then(function (img) {
+      setInput(img);
+      doAnalyze();                         // analysis only (no synthesis)
+      var note = $('paramNote');
+      if (note) note.textContent = 'Received from the correlation tool' +
+        (payload.src ? ' (' + payload.src + ')' : '') + ' — analysis run automatically.';
+      window.focus();
+    });
+  }
+  (function initHandoff() {
+    try {
+      var raw = localStorage.getItem('ps_incoming');
+      if (raw) { localStorage.removeItem('ps_incoming'); handleHandoff(JSON.parse(raw)); }
+    } catch (e) {}
+    window.addEventListener('storage', function (e) {
+      if (e.key !== 'ps_incoming' || !e.newValue) return;
+      var p; try { p = JSON.parse(e.newValue); } catch (err) { return; }
+      try { localStorage.removeItem('ps_incoming'); } catch (err) {}
+      handleHandoff(p);
+    });
+  })();
 })();

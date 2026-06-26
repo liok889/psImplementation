@@ -22,12 +22,26 @@ Controls: a **correlation slider** (r from −1 to 1), a **number-of-points** fi
 a **scatterplot / parallel-coordinates** toggle, a **mark-size** slider (circle
 radius for scatter / line width for parallel coordinates, in 256px-export units),
 an **opacity** slider (default 1 = fully opaque), an optional **random seed** (blank
-= fresh dataset each time), **Regenerate**, and **Export 256×256 PNG**. Marks are
-**black**. The page reports the achieved sample correlation (equal to the target to
+= fresh dataset each time), **Regenerate**, **Export 256×256 PNG**, and
+**Send to PS pipeline →**. Marks are **black**. The page reports the achieved sample correlation (equal to the target to
 floating-point precision). Mark size is in export-pixel units and scaled to the
 display, so what you see matches the exported PNG. The exported PNG omits axes —
 just the data marks on white — so the PS grayscale analysis sees the data layout as
 texture.
+
+## Send to PS pipeline (no download/upload)
+
+**Send to PS pipeline →** hands the rendered 256×256 image straight to the
+Portilla–Simoncelli web interface (`../web/index.html`) without saving a file:
+the PNG data URL is stashed in `localStorage` and the PS window is opened (or, if
+already open, reused and focused). The PS page loads the image and runs the
+**analysis** automatically (it does *not* start synthesis). A freshly opened PS
+window reads the image on load; an already-open one picks it up live via the
+`storage` event.
+
+This works because both pages are the **same origin** — so serve them from the
+**same** server (the repo-root `python3 -m http.server`) and the handoff is
+page-to-page in the browser, no disk round-trip.
 
 ## How the data is generated (exact sample correlation)
 
