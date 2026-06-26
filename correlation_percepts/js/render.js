@@ -42,12 +42,15 @@
       ctx.strokeStyle = ink;
       ctx.lineWidth = opts.lineWidth != null ? opts.lineWidth : Math.max(0.5, w / 320);
       ctx.globalAlpha = opts.alpha != null ? opts.alpha : 1;
-      ctx.beginPath();
+      // Stroke each line separately so overlapping lines blend ADDITIVELY
+      // (source-over with alpha < 1): denser regions of crossings get darker.
+      // A single batched path would composite once and show constant opacity.
       for (var i = 0; i < data.length; i++) {
+        ctx.beginPath();
         ctx.moveTo(xL, yL(data[i][0]));
         ctx.lineTo(xR, yR(data[i][1]));
+        ctx.stroke();
       }
-      ctx.stroke();
       ctx.globalAlpha = 1;
     } else { // scatterplot
       var sx = d3.scaleLinear().domain(ex).range([pad, w - pad]);
