@@ -231,6 +231,9 @@
     gen.synthTimer = setInterval(function () {
       if (gen.synthBusy || !gen.recent.length) return;
       const pick = gen.recent[(Math.random() * gen.recent.length) | 0];
+      // show the EXACT image that was sent immediately, then its synthesis
+      drawGrayArray($('stimInput'), pick.gray, 256, 256);
+      $('stimPreviewNote').textContent = 'stim ' + pick.stim + pick.lr + ' · r=' + pick.r.toFixed(3) + ' · synthesizing…';
       gen.synthBusy = true;
       fetch(url + '/synthesize', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nx: 256, ny: 256, image: Array.from(pick.gray), params: { N_iteration: 50 } }) })
@@ -239,7 +242,7 @@
           if (j && j.ok) { drawGrayArray($('stimPreview'), j.image, j.nx, j.ny);
             $('stimPreviewNote').textContent = 'stim ' + pick.stim + pick.lr + ' · r=' + pick.r.toFixed(3) + ' · seed ' + j.seed; }
         }).catch(function () {}).then(function () { gen.synthBusy = false; });
-    }, 5000);
+    }, 2000);
   }
   function stopSynthTimer() { if (gen.synthTimer) { clearInterval(gen.synthTimer); gen.synthTimer = null; } }
 

@@ -64,8 +64,9 @@ visualization type / points / mark size / opacity controls.
 
 Generation is **non-blocking** (a worker-style concurrency pool of `fetch`
 requests to the server) with a **progress bar**, throughput, and ETA. About every
-5 s it sends one random recently-processed plot to `/synthesize` and shows the
-returned texture, so you can watch results stream in. **Stop** halts early and
+2 s it picks one random recently-processed plot and shows two thumbnails side by
+side — the **exact image sent** to the server and its **PS synthesis** — so you can
+watch results stream in and confirm the rendering. **Stop** halts early and
 downloads what's done.
 
 Output CSV — **one row per visualization** (two rows per pair):
