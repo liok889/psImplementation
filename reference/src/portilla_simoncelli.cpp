@@ -98,6 +98,34 @@ static void print_help(char *name)
   printf("\n");
   printf("Grayscale conversion (average of the channels):\n");
   printf("-b, \t Use grayscale mode (1) or not (0) (default %i)\n", PAR_DEFAULT_GRAY);
+
+  printf("\n");
+  printf("CSV statistics output (with -S, and -H for the header row):\n");
+  printf("  The columns are the summary statistics imposed during synthesis, in the\n");
+  printf("  same order as the JavaScript implementation. With -H, each column has an\n");
+  printf("  abbreviated name encoding the statistic and its origin. Conventions:\n");
+  printf("    s<i>      scale i (s0 = finest, larger = coarser)\n");
+  printf("    o<j>      orientation j (0 .. K-1)\n");
+  printf("    dx<.>dy<.> spatial lag (offset) about the auto-correlation centre\n");
+  printf("    s<i>_<i+1> a pair of scales (the finer scale and its coarser parent)\n");
+  printf("    re/im     real or imaginary part of a (phase-doubled) parent band\n");
+  printf("  Column-name patterns:\n");
+  printf("    pix_min, pix_max, pix_mean, pix_var, pix_skew, pix_kurt\n");
+  printf("                          pixel marginal statistics of the image\n");
+  printf("    skewLow_s<i>, kurtLow_s<i>\n");
+  printf("                          skewness/kurtosis of the low-pass image at scale i\n");
+  printf("    varHigh               variance of the high-pass residual\n");
+  printf("    magMean_s<i>_o<j>     mean magnitude of the oriented band (scale i, orient j)\n");
+  printf("    autoCorrLow_s<i>_dx<.>_dy<.>\n");
+  printf("                          auto-correlation of the low-pass image (scale i) at a lag\n");
+  printf("    autoCorrMag_s<i>_o<j>_dx<.>_dy<.>\n");
+  printf("                          auto-correlation of a band's magnitude at a lag\n");
+  printf("    cousinMagCorr_s<i>_o<a>_o<b>\n");
+  printf("                          magnitude cross-correlation between orientations a,b (same scale)\n");
+  printf("    parentMagCorr_s<i>_<i+1>_o<a>_o<b>\n");
+  printf("                          magnitude cross-correlation with the coarser scale\n");
+  printf("    parentRealCorr_s<i>_<i+1>_o<a>_<re|im><b>\n");
+  printf("                          real/phase cross-correlation with the coarser scale\n");
 }
 
 // read command line parameters
