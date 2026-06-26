@@ -119,6 +119,50 @@
     $('exportNote').textContent = 'Sent to the PS pipeline → analysis runs in the PS window.';
   }
 
+  // read grayscale pixels (R+G+B)/3 from a canvas
+  function grayPixelsFromCanvas(cv) {
+    var ctx = cv.getContext('2d');
+    var d = ctx.getImageData(0, 0, cv.width, cv.height).data;
+    var g = new Array(cv.width * cv.height);
+    for (var i = 0, p = 0; i < g.length; i++, p += 4) g[i] = (d[p] + d[p + 1] + d[p + 2]) / 3;
+    return g;
+  }
+  // draw a grayscale value array (0..255) into a canvas at 256x256
+  function drawGrayArray(canvas, arr, nx, ny) {
+    var off = document.createElement('canvas'); off.width = nx; off.height = ny;
+    var octx = off.getContext('2d'); var id = octx.createImageData(nx, ny);
+    for (var i = 0; i < nx * ny; i++) { var v = arr[i]; v = v < 0 ? 0 : v > 255 ? 255 : v; id.data[i*4]=id.data[i*4+1]=id.data[i*4+2]=v; id.data[i*4+3]=255; }
+    octx.putImageData(id, 0, 0);
+    var disp = 256; canvas.width = disp; canvas.height = disp;
+    var ctx = canvas.getContext('2d'); ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, disp, disp); ctx.drawImage(off, 0, 0, disp, disp);
+  }
+
+  // send the rendered stimulus to the PS server and display the returned texture
+  function serverSynthesize() {
+    if (!state.data) return;
+    var c = readControls();
+    var url = ($('serverUrl').value || '').trim().replace(/\/+$/, '');
+    var gray = grayPixelsFromCanvas(renderExportCanvas(c));
+    $('serverNote').textContent = 'synthesizing on ' + url + ' …';
+    var btn = $('serverSynth'); btn.disabled = true;
+    var t0 = Date.now();
+    fetch(url + '/synthesize', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nx: 256, ny: 256, image: gray,
+        params: { N_steer: 4, N_pyr: 4, Na: 7, iterations: 50 } })
+    }).then(function (r) {
+      if (!r.ok) return r.text().then(function (t) { throw new Error('HTTP ' + r.status + ' ' + t); });
+      return r.json();
+    }).then(function (out) {
+      drawGrayArray($('serverCanvas'), out.image, out.nx, out.ny);
+      $('serverNote').textContent = 'seed ' + out.seed + ' · analyze ' + out.analyzeMs +
+        'ms · synth ' + out.synthMs + 'ms · round-trip ' + (Date.now() - t0) + 'ms';
+    }).catch(function (e) {
+      $('serverNote').textContent = 'server error: ' + e.message + '  (is the server running? CORS/URL ok?)';
+    }).then(function () { btn.disabled = false; });
+  }
+
   // wiring: r / n / seed regenerate; switching vis type only redraws (same data)
   $('corr').addEventListener('input', regenerate);
   $('npoints').addEventListener('change', regenerate);
@@ -129,6 +173,7 @@
   $('regen').addEventListener('click', regenerate);
   $('export').addEventListener('click', exportPNG);
   $('sendps').addEventListener('click', sendToPS);
+  $('serverSynth').addEventListener('click', serverSynthesize);
   window.addEventListener('resize', draw);
 
   regenerate();

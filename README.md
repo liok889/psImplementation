@@ -215,6 +215,9 @@ reference/                 the original C++ implementation (unmodified)
 correlation_percepts/      bivariate correlation-stimulus generator (scatter /
                            parallel coords, D3) + 256x256 PNG export for the PS
                            pipeline; see its own README
+server/                    Node worker-pool HTTP service: POST an image, get
+                           analysis stats and/or a synthesized texture; see its
+                           own README
 ```
 
 The JS keeps the reference's data conventions verbatim: planar channels with
