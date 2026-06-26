@@ -36,7 +36,8 @@ function mapy(v) { return (size - pad) - (v - ey[0]) / (ey[1] - ey[0]) * (size -
 function mapyR(v) { return (size - pad) - (v - ey[0]) / (ey[1] - ey[0]) * (size - 2 * pad); }
 
 if (type === 'parallel') {
-  var xL = pad, xR = size - pad;
+  // no horizontal padding: lines span edge to edge (avoids margin artifacts)
+  var xL = 0, xR = size - 1;
   var hw = Math.max(0, Math.round(markSize / 2));   // half line-thickness
   for (i = 0; i < pts.length; i++) {
     var y0 = mapyL(pts[i][0]), y1 = mapyR(pts[i][1]);

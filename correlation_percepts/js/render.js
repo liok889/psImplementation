@@ -31,7 +31,10 @@
     var ex = extent(data, 0), ey = extent(data, 1);
 
     if (opts.type === "parallel") {
-      var xL = pad, xR = w - pad;
+      // No horizontal padding: parallel-coordinate lines span the full width
+      // (x=0 to x=width) so empty left/right margins don't introduce texture
+      // artifacts in the PS analysis. (Vertical padding is kept.)
+      var xL = 0, xR = w;
       var yL = d3.scaleLinear().domain(ex).range([h - pad, pad]);
       var yR = d3.scaleLinear().domain(ey).range([h - pad, pad]);
       if (opts.drawAxes) {
