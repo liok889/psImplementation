@@ -8,44 +8,9 @@
                 running: false, synthStats: null, synthDims: null, lastSeed: null };
 
   // ---- statistics serialization / export ----
-  function f64ToArr(a) { var o = new Array(a.length); for (var i = 0; i < a.length; i++) o[i] = a[i]; return o; }
-  function matToArr(rows, n) { var o = []; for (var i = 0; i < n; i++) o.push(f64ToArr(rows[i])); return o; }
-  // Serialize the full statistics container into a structured plain object.
-  // Layout mirrors write_statistics() in constraints.cpp (grayscale).
-  function statsToObject(stats, params, dims, label) {
-    var P = params.N_pyr, K = params.N_steer, Na = params.Na;
-    var total = 6 + 2 * (1 + P) + 1 + P * K + (1 + P) * Na * Na +
-                P * K * Na * Na + P * K * K + (P - 1) * K * K + (P - 1) * 2 * K * K;
-    return {
-      meta: { source: label, nx: dims.nx, ny: dims.ny, nz: 1, N_pyr: P, N_steer: K,
-              Na: Na, totalScalars: total,
-              note: "Every field below is the complete set of statistics imposed during " +
-                    "synthesis (the Portilla-Simoncelli perceptual constraint set) -- nothing " +
-                    "more, nothing less. Includes magMeans, which the reference's text dump omits." },
-      legend: {
-        pixelStats: "[min, max, mean, variance, skewness, kurtosis]",
-        skewLow: "low-band skewness per scale (finest..coarsest), length 1+P",
-        kurtLow: "low-band kurtosis per scale, length 1+P",
-        varHigh: "high-pass residual variance",
-        magMeans: "mean magnitude of each oriented band, P*K (scale-major)",
-        autoCorLow: "central Na x Na auto-correlation of each low-band, [1+P][Na*Na]",
-        autoCorMag: "central Na x Na auto-correlation of each band magnitude, [P*K][Na*Na]",
-        cousinMagCor: "magnitude cross-correlation across orientation per scale, [P][K*K]",
-        parentMagCor: "magnitude cross-correlation with coarser scale, [P-1][K*K]",
-        parentRealCor: "real/phase cross-correlation with coarser scale, [P-1][2K*K]"
-      },
-      pixelStats: f64ToArr(stats.pixelStats),
-      skewLow: f64ToArr(stats.skewLow),
-      kurtLow: f64ToArr(stats.kurtLow),
-      varHigh: f64ToArr(stats.varHigh),
-      magMeans: f64ToArr(stats.magMeans),
-      autoCorLow: matToArr(stats.autoCorLow, 1 + P),
-      autoCorMag: matToArr(stats.autoCorMag, P * K),
-      cousinMagCor: matToArr(stats.cousinMagCor, P),
-      parentMagCor: matToArr(stats.parentMagCor, P - 1),
-      parentRealCor: matToArr(stats.parentRealCor, P - 1)
-    };
-  }
+  // statsToObject lives in js/statsjson.js (PS.StatsJSON) so it is unit-testable
+  // headlessly. It returns { meta, annotated[], raw[] } -- see that file.
+  var statsToObject = PS.StatsJSON.statsToObject;
   function downloadJSON(obj, filename) {
     var blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
     var url = URL.createObjectURL(blob);
