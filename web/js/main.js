@@ -18,7 +18,10 @@
                 P * K * Na * Na + P * K * K + (P - 1) * K * K + (P - 1) * 2 * K * K;
     return {
       meta: { source: label, nx: dims.nx, ny: dims.ny, nz: 1, N_pyr: P, N_steer: K,
-              Na: Na, totalScalars: total },
+              Na: Na, totalScalars: total,
+              note: "Every field below is the complete set of statistics imposed during " +
+                    "synthesis (the Portilla-Simoncelli perceptual constraint set) -- nothing " +
+                    "more, nothing less. Includes magMeans, which the reference's text dump omits." },
       legend: {
         pixelStats: "[min, max, mean, variance, skewness, kurtosis]",
         skewLow: "low-band skewness per scale (finest..coarsest), length 1+P",
