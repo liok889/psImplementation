@@ -21,6 +21,7 @@ extern "C" {
 #include "mt19937ar.h"
 #include "constraints.h"
 #include "pca.h"
+#include "analysis.h"
 
 // default parameters
 #define PAR_DEFAULT_NSTEER 4
@@ -81,6 +82,7 @@ static void print_help(char *name)
   printf("-C3, \t Adjust magnitude correlation (1) or not (0) (by default %i)\n", PAR_DEFAULT_MAGCORR);
   printf("-C4, \t Adjust real correlation (1) or not (0) (by default %i)\n", PAR_DEFAULT_REALCORR);
   printf("-o, \t Write the statistics evolution in a file (1) or not (0) (by default %i)\n", PAR_DEFAULT_STATISTICS);
+  printf("-S, \t Print the summary statistics as a CSV line to stdout and skip synthesis (1) or not (0) (default 0)\n");
 
   printf("\n");
   printf("Interpolation of two input textures:\n");
@@ -105,7 +107,7 @@ static int read_parameters(int argc, char *argv[], char **infile,
                            int &edge_handling, int &add_smooth, int &crop,
                            unsigned long &seed, int cmask[4], int &verbose,
                            char **infile2, float &interpWeight, int &gray,
-                           int &statistics)
+                           int &statistics, int &statistics_csv)
 {
   // display usage
   if (argc < 3) {
@@ -136,6 +138,7 @@ static int read_parameters(int argc, char *argv[], char **infile,
     cmask[3]      = PAR_DEFAULT_REALCORR;
     gray          = PAR_DEFAULT_GRAY;
     statistics   = PAR_DEFAULT_STATISTICS;
+    statistics_csv = 0;
     int interpolate = 0;
 
     // read each parameter from the command line
@@ -226,6 +229,10 @@ static int read_parameters(int argc, char *argv[], char **infile,
       if(strcmp(argv[i],"-o")==0)
         if(i < argc-1)
           statistics = atoi(argv[++i]);
+
+      if(strcmp(argv[i],"-S")==0)
+        if(i < argc-1)
+          statistics_csv = atoi(argv[++i]);
 
       i++;
     }
@@ -363,7 +370,7 @@ int main(int argc, char **argv)
   char *infile, *outfile, *noisefile = NULL, *infile2 = NULL;
   int N_steer, N_pyr, N_iteration, Na, verbose = 0;
   int nxout = 0, nyout = 0, noise, edge_handling, add_smooth, crop;
-  int gray, statistics;
+  int gray, statistics, statistics_csv;
   int cmask[4] = { 0 };
   unsigned long seed;
   float interpWeight = -1; // negative value <--> no interpolation
@@ -373,7 +380,7 @@ int main(int argc, char **argv)
     argc, argv, &infile, &outfile, N_steer, N_pyr, N_iteration,
     Na, noise, &noisefile, nxout, nyout, edge_handling,
     add_smooth, crop, seed, cmask, verbose,
-    &infile2, interpWeight, gray, statistics);
+    &infile2, interpWeight, gray, statistics, statistics_csv);
 
   if( result ) { // if the parameters are correct
     // read input image
@@ -553,6 +560,21 @@ int main(int argc, char **argv)
 
       // initialization of the noise with the provided seed
       mt_init_genrand(seed);
+
+      // Statistics-only mode: run the analysis, print the synthesis-relevant
+      // summary statistics as a CSV line to stdout, and skip synthesis.
+      if ( statistics_csv ) {
+        statsStruct stats;
+        allocate_stats(&stats, params, nz);
+        analysis(&stats, data_in_crop, params);
+        print_statistics_csv(stats, params, nz);
+        free_stats(stats, params, nz);
+        free(data_in_crop.image);
+        if ( interpWeight >= 0 )
+          free(data_in2_crop.image);
+        free(data_out.image);
+        return EXIT_SUCCESS;
+      }
 
       // Portilla and Simoncelli texture synthesis (Algorithm 5)
       if ( verbose )

@@ -119,6 +119,19 @@ cd reference && make portilla_simoncelli \
 `long double == double`, which made two `switch` `case` labels collide — the
 `long double` case is now guarded by `__LDBL_MANT_DIG__`.)
 
+**Statistics-only mode (`-S`).** The reference has an added flag that runs the
+analysis and prints the synthesis-relevant summary statistics as a single CSV
+line to stdout (no header), then skips synthesis:
+
+```bash
+./portilla_simoncelli data/sample.png unused.png -b 1 -S 1 > stats.csv
+```
+
+The values and their order match the JavaScript implementation's raw export
+exactly (including `magMeans`, which the `-o` text dump omits). Verify with
+`bash test/verify_cpp_csv.sh` — the C++ and JS outputs agree value-by-value to
+~4e-7 (float-vs-double rounding).
+
 **Benchmark — JS vs native C++**, analysis and synthesis timed separately, same
 256×256 grayscale fixture, same parameters (P=4, K=4, Na=7, 50 iterations), both
 single-threaded (native = real FFTW, JS = JavaScriptCore):

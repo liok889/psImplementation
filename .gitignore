@@ -6,6 +6,7 @@ reference_harness/*.o
 test/fixture_gray.txt
 test/fixture.json
 test/ref_stats.json
+test/cpp_stats.csv
 test/*.pgm
 test/*.png
 
