@@ -210,10 +210,11 @@
   }
   function fmtStat(v) { return isFinite(v) ? '' + (+v.toPrecision(7)) : '0'; }
   function fmtR(v) { return '' + (+v.toFixed(4)); }
-  function rowStr(t, raw) {
-    const a = new Array(4 + raw.length);
-    a[0] = t.stim; a[1] = fmtR(t.rbase); a[2] = fmtR(t.r); a[3] = t.lr;
-    for (let i = 0; i < raw.length; i++) a[4 + i] = fmtStat(raw[i]);
+  function visLabel(t) { return t === 'ordered' ? 'orderedlines' : t; }   // scatter | parallel | orderedlines
+  function rowStr(t, raw, vis) {
+    const a = new Array(5 + raw.length);
+    a[0] = t.stim; a[1] = vis; a[2] = fmtR(t.rbase); a[3] = fmtR(t.r); a[4] = t.lr;
+    for (let i = 0; i < raw.length; i++) a[5 + i] = fmtStat(raw[i]);
     return a.join(',');
   }
   function analyzeReq(url, gray, lean) {
@@ -264,6 +265,7 @@
     if (estMB > 250 && !window.confirm('This will build ~' + estMB + ' MB of CSV in memory (' + total + ' rows). Continue?')) return;
 
     const rows = new Array(total);
+    const vis = visLabel(c.type);
     let processed = 0, errors = 0;
     gen.running = true; gen.stop = false; gen.recent = [];
     $('genStart').disabled = true; $('genStop').disabled = false;
@@ -283,8 +285,8 @@
     try {
       const g0 = renderGrayForR(tasks[0].r, c);
       const probe = await analyzeReq(url, g0, false);
-      header = ['stimulus', 'rbase', 'r', 'left_or_right'].concat(probe.stats.annotated.map(function (a) { return a.key; }));
-      rows[tasks[0].lineIndex] = rowStr(tasks[0], probe.stats.raw);
+      header = ['stimulus', 'vis', 'rbase', 'r', 'left_or_right'].concat(probe.stats.annotated.map(function (a) { return a.key; }));
+      rows[tasks[0].lineIndex] = rowStr(tasks[0], probe.stats.raw, vis);
       processed = 1; pushRecent(tasks[0], g0);
     } catch (e) {
       $('genNote').textContent = 'cannot reach PS server at ' + url + ' (' + e.message + ') — is it running?';
@@ -301,7 +303,7 @@
         try {
           const g = renderGrayForR(t.r, c);
           const res = await analyzeReq(url, g, true);
-          rows[t.lineIndex] = rowStr(t, res.raw);
+          rows[t.lineIndex] = rowStr(t, res.raw, vis);
           if ((processed % 7) === 0) pushRecent(t, g);
         } catch (e) { errors++; }
         processed++;

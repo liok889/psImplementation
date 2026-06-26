@@ -72,12 +72,13 @@ downloads what's done.
 Output CSV — **one row per visualization** (two rows per pair):
 
 ```
-stimulus,rbase,r,left_or_right,<1270 PS statistics columns>
+stimulus,vis,rbase,r,left_or_right,<1270 PS statistics columns>
 ```
 
-`stimulus` = pair id (shared by its two rows), `r` = that plot's actual
-correlation, `left_or_right` = `L`/`R`, and the statistics columns use the
-abbreviated PS field names (scale/orientation/lag position indicators). The CSV is
+`stimulus` = pair id (shared by its two rows), `vis` = visualization type
+(`scatter` / `parallel` / `orderedlines`), `r` = that plot's actual correlation,
+`left_or_right` = `L`/`R`, and the statistics columns use the abbreviated PS field
+names (scale/orientation/lag position indicators). The CSV is
 assembled in memory and downloaded at the end; the default 7×2000 batch is
 ~28k rows / ~hundreds of MB, so you'll get a size confirmation before it starts.
 Requires the PS server (`server/`) running at the **PS server URL**.
