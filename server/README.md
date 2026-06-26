@@ -29,7 +29,8 @@ Request body — either an encoded image or raw grayscale pixels:
 
 Optional fields: `params:{N_steer,N_pyr,Na,iterations}`, `seed` (integer; omit for a
 random seed, which is returned), `returnStats:true` (also return input stats from
-`/synthesize`).
+`/synthesize`), and `lean:true` on `/analyze` to return just `{ raw:[…1270] }`
+(no annotated array) — much lighter for batch runs.
 
 ## Examples
 

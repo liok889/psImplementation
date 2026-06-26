@@ -114,9 +114,12 @@ const server = http.createServer(function (req, res) {
       let img; try { img = resolveImage(body); } catch (e) { return bad(res, 400, e.message); }
       const cmd = req.url === '/synthesize' ? 'synthesize' : 'analyze';
       const params = body.params || { N_steer: body.N_steer, N_pyr: body.N_pyr, Na: body.Na, N_iteration: body.iterations };
-      run({ cmd, nx: img.nx, ny: img.ny, image: img.image, params, seed: body.seed, returnStats: !!body.returnStats })
+      run({ cmd, nx: img.nx, ny: img.ny, image: img.image, params, seed: body.seed, returnStats: !!body.returnStats, lean: !!body.lean })
         .then(function (msg) {
-          if (cmd === 'analyze') return sendJSON(res, 200, { ok: true, stats: msg.stats, dims: msg.dims, analyzeMs: msg.analyzeMs });
+          if (cmd === 'analyze') {
+            if (msg.raw) return sendJSON(res, 200, { ok: true, raw: Array.prototype.slice.call(msg.raw), dims: msg.dims, analyzeMs: msg.analyzeMs });
+            return sendJSON(res, 200, { ok: true, stats: msg.stats, dims: msg.dims, analyzeMs: msg.analyzeMs });
+          }
           const out = { ok: true, nx: msg.nx, ny: msg.ny, seed: msg.seed, analyzeMs: msg.analyzeMs, synthMs: msg.synthMs };
           out.image = Array.prototype.map.call(msg.image, v => Math.round(v));
           if (msg.stats) out.stats = msg.stats;

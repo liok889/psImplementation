@@ -37,6 +37,13 @@
   .muted{ color:var(--muted); } .mono{ font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
   .legend{ font-size:12px; color:var(--muted); margin-top:10px; }
   .note{ color:var(--accent2); font-size:12.5px; margin-top:10px; min-height:1.2em; }
+  h2.sec{ margin:0 0 14px; font-size:16px; font-weight:640; }
+  .pbar{ height:12px; background:var(--panel2); border:1px solid var(--line); border-radius:7px; overflow:hidden; }
+  .pbar > i{ display:block; height:100%; width:0; background:linear-gradient(90deg,var(--accent),var(--accent2)); transition:width .2s; }
+  .radio{ display:flex; gap:18px; margin-top:4px; }
+  .radio label{ display:flex; align-items:center; gap:6px; color:var(--ink); font-size:13px; }
+  canvas#stimPreview{ width:220px; max-width:100%; background:#fff; border:1px solid var(--line);
+    border-radius:8px; image-rendering:pixelated; }
 </style>
 </head>
 <body>
@@ -105,6 +112,52 @@
           <div class="muted" style="font-size:12px; margin-bottom:6px">PS-synthesized texture (from the server)</div>
           <canvas id="serverCanvas" width="256" height="256"></canvas>
           <div class="legend mono" id="serverNote">start the server, then “Synthesize via server →”</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2 class="sec">Stimulus collection generation</h2>
+    <div class="grid">
+      <div>
+        <div class="field">
+          <label>Base correlation levels (rbase, comma-separated)</label>
+          <input type="text" id="rbaseList" value="0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8">
+        </div>
+        <div class="field">
+          <label>Stimuli (pairs) per base</label>
+          <input type="number" id="nStimuli" value="2000" min="1" max="100000" step="1">
+        </div>
+        <div class="field">
+          <label>Test range (offset, 0.1–1)</label>
+          <input type="number" id="testRange" value="0.2" min="0.1" max="1" step="0.05">
+        </div>
+        <div class="field">
+          <label>Correlation sign</label>
+          <div class="radio">
+            <label><input type="radio" name="sign" value="pos" checked> positive</label>
+            <label><input type="radio" name="sign" value="neg"> negative</label>
+          </div>
+        </div>
+        <div class="field">
+          <label>Max concurrent server requests</label>
+          <input type="number" id="concurrency" value="16" min="1" max="128" step="1">
+        </div>
+        <div class="rowbtn">
+          <button id="genStart">Generate stimuli</button>
+          <button id="genStop" class="secondary" disabled>Stop</button>
+        </div>
+        <div class="note" id="genNote">Uses the visualization type / points / mark size / opacity set above,
+          and the PS server URL. One row per visualization; two rows per pair.</div>
+      </div>
+      <div>
+        <div class="pbar"><i id="genBar"></i></div>
+        <div class="legend mono" id="genStatus" style="margin-top:8px;">idle</div>
+        <div style="margin-top:18px">
+          <div class="muted" style="font-size:12px; margin-bottom:6px">live synthesis of a random processed stimulus (≈ every 5 s)</div>
+          <canvas id="stimPreview" width="220" height="220"></canvas>
+          <div class="legend mono" id="stimPreviewNote"></div>
         </div>
       </div>
     </div>

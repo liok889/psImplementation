@@ -43,6 +43,44 @@ This works because both pages are the **same origin** — so serve them from the
 **same** server (the repo-root `python3 -m http.server`) and the handoff is
 page-to-page in the browser, no disk round-trip.
 
+## Stimulus collection generation
+
+The **Stimulus collection generation** panel builds a labelled dataset of
+visualization *pairs* for perception experiments and runs each plot through the
+PS server.
+
+Inputs:
+- **Base correlation levels** (`rbase`, comma-separated; default `0.2 … 0.8`)
+- **Stimuli (pairs) per base** (default 2000)
+- **Test range** (offset, 0.1–1; default 0.2)
+- **Correlation sign** (positive / negative)
+- **Max concurrent server requests** (browsers cap ~6 connections per origin)
+
+For each base level it generates `N` pairs. In each pair, one plot is at exactly
+`rbase` and the other at `r ~ Uniform[rbase−range, rbase+range]` (cropped to
+`[0,1]`); which side (left/right) is the base is randomized. Negative sign negates
+both (magnitudes still cropped in `[0,1]` first). Plots use the **current**
+visualization type / points / mark size / opacity controls.
+
+Generation is **non-blocking** (a worker-style concurrency pool of `fetch`
+requests to the server) with a **progress bar**, throughput, and ETA. About every
+5 s it sends one random recently-processed plot to `/synthesize` and shows the
+returned texture, so you can watch results stream in. **Stop** halts early and
+downloads what's done.
+
+Output CSV — **one row per visualization** (two rows per pair):
+
+```
+stimulus,rbase,r,left_or_right,<1270 PS statistics columns>
+```
+
+`stimulus` = pair id (shared by its two rows), `r` = that plot's actual
+correlation, `left_or_right` = `L`/`R`, and the statistics columns use the
+abbreviated PS field names (scale/orientation/lag position indicators). The CSV is
+assembled in memory and downloaded at the end; the default 7×2000 batch is
+~28k rows / ~hundreds of MB, so you'll get a size confirmation before it starts.
+Requires the PS server (`server/`) running at the **PS server URL**.
+
 ## How the data is generated (exact sample correlation)
 
 `js/gen.js`: draw bivariate normal data and impose an **exact in-sample** Pearson

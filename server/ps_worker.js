@@ -47,8 +47,15 @@ parentPort.on('message', function (job) {
     const statsObj = PS.StatsJSON.statsToObject(stats, params, { nx: c.nx, ny: c.ny }, 'server(' + job.cmd + ')');
 
     if (job.cmd === 'analyze') {
-      parentPort.postMessage({ jobId: job.jobId, ok: true, stats: statsObj,
-        dims: { nx: c.nx, ny: c.ny, N_pyr: c.P, N_steer: K, Na: Na }, analyzeMs });
+      const dims = { nx: c.nx, ny: c.ny, N_pyr: c.P, N_steer: K, Na: Na };
+      if (job.lean) {
+        // raw values only (transferable) -- avoids cloning the 1270-entry
+        // annotated array per request during batch runs
+        const raw = Float64Array.from(statsObj.raw);
+        parentPort.postMessage({ jobId: job.jobId, ok: true, raw, dims, analyzeMs }, [raw.buffer]);
+      } else {
+        parentPort.postMessage({ jobId: job.jobId, ok: true, stats: statsObj, dims, analyzeMs });
+      }
       return;
     }
 

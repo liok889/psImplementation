@@ -176,5 +176,155 @@
   $('serverSynth').addEventListener('click', serverSynthesize);
   window.addEventListener('resize', draw);
 
+  // ===================== stimulus collection generation =====================
+  // Build a list of plot "tasks". For each base level, `n` pairs: one plot at
+  // exactly rbase, the other at r ~ Uniform[rbase-range, rbase+range] cropped to
+  // [0,1]; left/right (which is the base) is randomized. Negative sign negates
+  // both. Each plot becomes one CSV line; the two lines of a pair are adjacent.
+  function buildTasks(cfg) {
+    const tasks = []; let pair = 0;
+    for (let bi = 0; bi < cfg.bases.length; bi++) {
+      const rb = cfg.bases[bi];
+      const lo = Math.max(0, rb - cfg.range), hi = Math.min(1, rb + cfg.range);
+      for (let k = 0; k < cfg.n; k++) {
+        pair++;
+        const rOther = lo + Math.random() * (hi - lo);
+        const rbaseV = cfg.sign * rb, rOtherV = cfg.sign * rOther;
+        const baseLeft = Math.random() < 0.5;
+        const lb = (pair - 1) * 2 + (baseLeft ? 0 : 1);
+        const lo2 = (pair - 1) * 2 + (baseLeft ? 1 : 0);
+        tasks[lb]  = { lineIndex: lb,  stim: pair, rbase: rbaseV, r: rbaseV,  lr: baseLeft ? 'L' : 'R' };
+        tasks[lo2] = { lineIndex: lo2, stim: pair, rbase: rbaseV, r: rOtherV, lr: baseLeft ? 'R' : 'L' };
+      }
+    }
+    return tasks;
+  }
+  // render a fresh dataset at correlation r to a 256x256 grayscale pixel array
+  function renderGrayForR(r, c) {
+    const data = CorrGen.generate(c.n, r, null);
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256;
+    CorrRender.render(cv.getContext('2d'), data, {
+      width: 256, height: 256, type: c.type, drawAxes: false, pad: 10,
+      alpha: c.opacity, pointRadius: c.markSize, lineWidth: c.markSize });
+    return grayPixelsFromCanvas(cv);
+  }
+  function fmtStat(v) { return isFinite(v) ? '' + (+v.toPrecision(7)) : '0'; }
+  function fmtR(v) { return '' + (+v.toFixed(4)); }
+  function rowStr(t, raw) {
+    const a = new Array(4 + raw.length);
+    a[0] = t.stim; a[1] = fmtR(t.rbase); a[2] = fmtR(t.r); a[3] = t.lr;
+    for (let i = 0; i < raw.length; i++) a[4 + i] = fmtStat(raw[i]);
+    return a.join(',');
+  }
+  function analyzeReq(url, gray, lean) {
+    return fetch(url + '/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nx: 256, ny: 256, image: gray, params: { N_steer: 4, N_pyr: 4, Na: 7 }, lean: !!lean }) })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+  }
+
+  var gen = { running: false, stop: false, recent: [], synthBusy: false, synthTimer: null };
+  function pushRecent(t, gray) {
+    gen.recent.push({ gray: Float32Array.from(gray), r: t.r, stim: t.stim, lr: t.lr });
+    if (gen.recent.length > 24) gen.recent.shift();
+  }
+  function startSynthTimer(url) {
+    gen.synthTimer = setInterval(function () {
+      if (gen.synthBusy || !gen.recent.length) return;
+      const pick = gen.recent[(Math.random() * gen.recent.length) | 0];
+      gen.synthBusy = true;
+      fetch(url + '/synthesize', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nx: 256, ny: 256, image: Array.from(pick.gray), params: { N_iteration: 50 } }) })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j && j.ok) { drawGrayArray($('stimPreview'), j.image, j.nx, j.ny);
+            $('stimPreviewNote').textContent = 'stim ' + pick.stim + pick.lr + ' · r=' + pick.r.toFixed(3) + ' · seed ' + j.seed; }
+        }).catch(function () {}).then(function () { gen.synthBusy = false; });
+    }, 5000);
+  }
+  function stopSynthTimer() { if (gen.synthTimer) { clearInterval(gen.synthTimer); gen.synthTimer = null; } }
+
+  async function startGeneration() {
+    if (gen.running) return;
+    const c = readControls();
+    const url = ($('serverUrl').value || '').trim().replace(/\/+$/, '');
+    const bases = ($('rbaseList').value || '').split(',').map(function (s) { return parseFloat(s.trim()); }).filter(function (x) { return isFinite(x); });
+    const n = Math.max(1, parseInt($('nStimuli').value, 10) || 1);
+    const range = Math.min(1, Math.max(0.1, parseFloat($('testRange').value) || 0.2));
+    const signEl = document.querySelector('input[name=sign]:checked');
+    const sign = (signEl && signEl.value === 'neg') ? -1 : 1;
+    const K = Math.max(1, parseInt($('concurrency').value, 10) || 8);
+    if (!bases.length) { $('genNote').textContent = 'enter at least one base correlation level'; return; }
+
+    const tasks = buildTasks({ bases: bases, n: n, range: range, sign: sign });
+    const total = tasks.length;
+    const estMB = Math.round(total * 13000 / 1e6);
+    if (estMB > 250 && !window.confirm('This will build ~' + estMB + ' MB of CSV in memory (' + total + ' rows). Continue?')) return;
+
+    const rows = new Array(total);
+    let processed = 0, errors = 0;
+    gen.running = true; gen.stop = false; gen.recent = [];
+    $('genStart').disabled = true; $('genStop').disabled = false;
+    const t0 = Date.now();
+
+    function updateProgress() {
+      const pct = Math.round(100 * processed / total);
+      $('genBar').style.width = pct + '%';
+      const el = (Date.now() - t0) / 1000, rate = processed / Math.max(el, 1e-6), eta = (total - processed) / Math.max(rate, 1e-6);
+      $('genStatus').textContent = processed + ' / ' + total + ' plots (' + pct + '%) · ' +
+        rate.toFixed(0) + ' plots/s · elapsed ' + el.toFixed(0) + 's · ETA ' + eta.toFixed(0) + 's' +
+        (errors ? (' · ' + errors + ' errors') : '');
+    }
+
+    // probe the first task non-lean to capture the CSV header (stat names)
+    let header;
+    try {
+      const g0 = renderGrayForR(tasks[0].r, c);
+      const probe = await analyzeReq(url, g0, false);
+      header = ['stimulus', 'rbase', 'r', 'left_or_right'].concat(probe.stats.annotated.map(function (a) { return a.key; }));
+      rows[tasks[0].lineIndex] = rowStr(tasks[0], probe.stats.raw);
+      processed = 1; pushRecent(tasks[0], g0);
+    } catch (e) {
+      $('genNote').textContent = 'cannot reach PS server at ' + url + ' (' + e.message + ') — is it running?';
+      gen.running = false; $('genStart').disabled = false; $('genStop').disabled = true; return;
+    }
+    updateProgress();
+    startSynthTimer(url);
+
+    const rest = tasks.slice(1);
+    let idx = 0;
+    async function runner() {
+      while (idx < rest.length && !gen.stop) {
+        const t = rest[idx++];
+        try {
+          const g = renderGrayForR(t.r, c);
+          const res = await analyzeReq(url, g, true);
+          rows[t.lineIndex] = rowStr(t, res.raw);
+          if ((processed % 7) === 0) pushRecent(t, g);
+        } catch (e) { errors++; }
+        processed++;
+        if ((processed % 25) === 0) updateProgress();
+      }
+    }
+    const runners = []; for (let k = 0; k < K; k++) runners.push(runner());
+    await Promise.all(runners);
+    updateProgress(); stopSynthTimer();
+
+    // assemble + download CSV (Blob from parts to avoid one giant string)
+    const parts = [header.join(',') + '\n'];
+    let written = 0;
+    for (let i = 0; i < rows.length; i++) if (rows[i] !== undefined) { parts.push(rows[i] + '\n'); written++; }
+    const blob = new Blob(parts, { type: 'text/csv' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'stimuli_' + c.type + '_' + (sign < 0 ? 'neg' : 'pos') + '_' + bases.length + 'bases_' + n + 'x.csv';
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.parentNode && a.parentNode.removeChild(a); }, 1000);
+    $('genNote').textContent = (gen.stop ? 'stopped — ' : 'done — ') + 'downloaded ' + a.download +
+      ' (' + written + ' rows, ' + errors + ' errors)';
+    gen.running = false; $('genStart').disabled = false; $('genStop').disabled = true;
+  }
+
+  $('genStart').addEventListener('click', startGeneration);
+  $('genStop').addEventListener('click', function () { gen.stop = true; $('genStop').disabled = true; });
+
   regenerate();
 })();
