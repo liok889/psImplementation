@@ -55,6 +55,27 @@
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
+    } else if (opts.type === "ordered") {
+      // "ordered line": sort points by x, then draw two black lines across the
+      // full width (index = sorted position) -- the sorted-x series and the
+      // y-in-that-order series. Both lines use the same ink; width/opacity come
+      // from the mark sliders.
+      var n = data.length;
+      var order = data.map(function (d, i) { return i; }).sort(function (a, b) { return data[a][0] - data[b][0]; });
+      var yX = d3.scaleLinear().domain(ex).range([h - pad, pad]);
+      var yY = d3.scaleLinear().domain(ey).range([h - pad, pad]);
+      var xpos = function (i) { return n > 1 ? (i / (n - 1)) * w : w / 2; };
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = opts.lineWidth != null ? opts.lineWidth : Math.max(0.5, w / 320);
+      ctx.globalAlpha = opts.alpha != null ? opts.alpha : 1;
+      var oi, op;
+      ctx.beginPath();                                  // sorted-x series
+      for (oi = 0; oi < n; oi++) { op = data[order[oi]]; var Xx = xpos(oi), Yx = yX(op[0]); oi === 0 ? ctx.moveTo(Xx, Yx) : ctx.lineTo(Xx, Yx); }
+      ctx.stroke();
+      ctx.beginPath();                                  // y in sorted-x order
+      for (oi = 0; oi < n; oi++) { op = data[order[oi]]; var Xy = xpos(oi), Yy = yY(op[1]); oi === 0 ? ctx.moveTo(Xy, Yy) : ctx.lineTo(Xy, Yy); }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
     } else { // scatterplot
       var sx = d3.scaleLinear().domain(ex).range([pad, w - pad]);
       var sy = d3.scaleLinear().domain(ey).range([h - pad, pad]);

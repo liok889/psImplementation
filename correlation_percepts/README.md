@@ -19,7 +19,7 @@ python3 -m http.server 8000
 ```
 
 Controls: a **correlation slider** (r from −1 to 1), a **number-of-points** field,
-a **scatterplot / parallel-coordinates** toggle, a **mark-size** slider (circle
+a **scatterplot / parallel-coordinates / ordered-line** selector, a **mark-size** slider (circle
 radius for scatter / line width for parallel coordinates, in 256px-export units),
 an **opacity** slider (default 1 = fully opaque), an optional **random seed** (blank
 = fresh dataset each time), **Regenerate**, **Export 256×256 PNG**, and

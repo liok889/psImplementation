@@ -50,6 +50,23 @@ if (type === 'parallel') {
         blend(px + tx, py + ty, opacity);
     }
   }
+} else if (type === 'ordered') {
+  // sort by x; draw two black polylines (sorted-x series and y-in-that-order)
+  var hwo = Math.max(0, Math.round(markSize / 2));
+  var n2 = pts.length;
+  var order = []; for (var q = 0; q < n2; q++) order.push(q);
+  order.sort(function (a, b) { return pts[a][0] - pts[b][0]; });
+  var xposO = function (i) { return n2 > 1 ? (i / (n2 - 1)) * (size - 1) : (size - 1) / 2; };
+  var mapV = function (v, e) { return (size - pad) - (v - e[0]) / (e[1] - e[0]) * (size - 2 * pad); };
+  var segO = function (x0, y0, x1, y1) {
+    var steps = Math.max(1, Math.round(Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0))));
+    for (var s = 0; s <= steps; s++) {
+      var t = s / steps, px = Math.round(x0 + t * (x1 - x0)), py = Math.round(y0 + t * (y1 - y0));
+      for (var ty = -hwo; ty <= hwo; ty++) for (var tx = -hwo; tx <= hwo; tx++) blend(px + tx, py + ty, opacity);
+    }
+  };
+  for (i = 1; i < n2; i++) segO(xposO(i - 1), mapV(pts[order[i - 1]][0], ex), xposO(i), mapV(pts[order[i]][0], ex));
+  for (i = 1; i < n2; i++) segO(xposO(i - 1), mapV(pts[order[i - 1]][1], ey), xposO(i), mapV(pts[order[i]][1], ey));
 } else { // scatter
   var rad = Math.max(0, Math.round(markSize));
   for (i = 0; i < pts.length; i++) {
