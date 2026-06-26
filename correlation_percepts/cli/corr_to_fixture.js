@@ -6,13 +6,15 @@
 // marks (dark on white); it is a rasterization approximation, not a pixel-exact
 // copy of the browser canvas.
 //
-//   jsc corr_to_fixture.js -- <root> <n> <r> <type> [seed] [size]
+//   jsc corr_to_fixture.js -- <root> <n> <r> <type> [seed] [size] [markSize] [opacity]
 'use strict';
 var a = (typeof arguments !== 'undefined') ? Array.prototype.slice.call(arguments) : [];
-if (a.length < 4) { print("usage: jsc corr_to_fixture.js -- <root> <n> <r> <scatter|parallel> [seed] [size]"); if (typeof quit === 'function') quit(2); }
+if (a.length < 4) { print("usage: jsc corr_to_fixture.js -- <root> <n> <r> <scatter|parallel> [seed] [size] [markSize] [opacity]"); if (typeof quit === 'function') quit(2); }
 var ROOT = a[0], n = parseInt(a[1], 10), r = parseFloat(a[2]), type = a[3];
 var seed = (a[4] === undefined || a[4] === "") ? null : (parseInt(a[4], 10) >>> 0);
 var size = a[5] ? parseInt(a[5], 10) : 256;
+var markSize = a[6] ? parseFloat(a[6]) : 2;          // circle radius / line width (px)
+var opacity = a[7] ? parseFloat(a[7]) : 1;           // 1 = fully opaque (default)
 
 load(ROOT + "/correlation_percepts/lib/d3.v7.min.js");
 load(ROOT + "/correlation_percepts/js/gen.js");
@@ -21,7 +23,7 @@ var pts = CorrGen.generate(n, r, seed);
 function extent(d, k) { var lo = Infinity, hi = -Infinity; for (var i = 0; i < d.length; i++) { var v = d[i][k]; if (v < lo) lo = v; if (v > hi) hi = v; } if (lo === hi) { lo -= 1; hi += 1; } return [lo, hi]; }
 
 var img = new Float64Array(size * size); for (var i = 0; i < img.length; i++) img[i] = 255;
-var pad = 10, ink = 17;
+var pad = 10, ink = 0;   // black marks
 function blend(px, py, alpha) {
   if (px < 0 || px >= size || py < 0 || py >= size) return;
   var idx = px + py * size;
@@ -34,24 +36,25 @@ function mapy(v) { return (size - pad) - (v - ey[0]) / (ey[1] - ey[0]) * (size -
 function mapyR(v) { return (size - pad) - (v - ey[0]) / (ey[1] - ey[0]) * (size - 2 * pad); }
 
 if (type === 'parallel') {
-  var xL = pad, xR = size - pad, alpha = 0.5;
+  var xL = pad, xR = size - pad;
+  var hw = Math.max(0, Math.round(markSize / 2));   // half line-thickness
   for (i = 0; i < pts.length; i++) {
     var y0 = mapyL(pts[i][0]), y1 = mapyR(pts[i][1]);
-    // Bresenham-ish line from (xL,y0) to (xR,y1)
     var steps = Math.max(1, Math.round(xR - xL));
     for (var s = 0; s <= steps; s++) {
       var t = s / steps;
       var px = Math.round(xL + t * (xR - xL));
       var py = Math.round(y0 + t * (y1 - y0));
-      blend(px, py, alpha);
+      for (var ty = -hw; ty <= hw; ty++) for (var tx = -hw; tx <= hw; tx++)
+        blend(px + tx, py + ty, opacity);
     }
   }
 } else { // scatter
-  var rad = Math.max(1, Math.round(size / 130)), alpha2 = 0.65;
+  var rad = Math.max(0, Math.round(markSize));
   for (i = 0; i < pts.length; i++) {
     var cx = Math.round(mapx(pts[i][0])), cy = Math.round(mapy(pts[i][1]));
     for (var dy = -rad; dy <= rad; dy++) for (var dx = -rad; dx <= rad; dx++)
-      if (dx * dx + dy * dy <= rad * rad) blend(cx + dx, cy + dy, alpha2);
+      if (dx * dx + dy * dy <= rad * rad) blend(cx + dx, cy + dy, opacity);
   }
 }
 

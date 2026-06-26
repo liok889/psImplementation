@@ -20,7 +20,7 @@
   function render(ctx, data, opts) {
     var w = opts.width, h = opts.height;
     var pad = opts.pad != null ? opts.pad : Math.round(Math.min(w, h) * 0.08);
-    var ink = opts.ink || "#111";
+    var ink = opts.ink || "#000";
     var axisCol = "#c7ccd6";
 
     ctx.save();
@@ -41,7 +41,7 @@
       }
       ctx.strokeStyle = ink;
       ctx.lineWidth = opts.lineWidth != null ? opts.lineWidth : Math.max(0.5, w / 320);
-      ctx.globalAlpha = opts.alpha != null ? opts.alpha : 0.5;
+      ctx.globalAlpha = opts.alpha != null ? opts.alpha : 1;
       ctx.beginPath();
       for (var i = 0; i < data.length; i++) {
         ctx.moveTo(xL, yL(data[i][0]));
@@ -58,7 +58,7 @@
       }
       var rad = opts.pointRadius != null ? opts.pointRadius : Math.max(1, w / 130);
       ctx.fillStyle = ink;
-      ctx.globalAlpha = opts.alpha != null ? opts.alpha : 0.65;
+      ctx.globalAlpha = opts.alpha != null ? opts.alpha : 1;
       for (var j = 0; j < data.length; j++) {
         ctx.beginPath();
         ctx.arc(sx(data[j][0]), sy(data[j][1]), rad, 0, 2 * Math.PI);

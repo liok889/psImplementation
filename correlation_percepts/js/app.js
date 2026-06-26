@@ -9,6 +9,8 @@
       r: parseFloat($('corr').value),
       n: Math.max(2, Math.min(20000, parseInt($('npoints').value, 10) || 2)),
       type: $('type').value,
+      markSize: parseFloat($('marksize').value),   // px @ 256px export
+      opacity: parseFloat($('opacity').value),
       seedRaw: ($('seed').value || '').trim()
     };
   }
@@ -32,10 +34,18 @@
       '   ·   achieved sample r = ' + achieved.toFixed(6) + '   ·   n = ' + c.n;
   }
 
-  // draw the current dataset to the on-screen canvas (chosen vis type)
+  function updateLabels(c) {
+    $('sizeVal').textContent = c.markSize.toFixed(1);
+    $('opacityVal').textContent = c.opacity.toFixed(2);
+  }
+
+  // draw the current dataset to the on-screen canvas (chosen vis type).
+  // Mark size is specified in 256px-export units and scaled to the display so
+  // the on-screen marks match the exported PNG (WYSIWYG).
   function draw() {
     if (!state.data) return;
     var c = readControls();
+    updateLabels(c);
     var cv = $('display');
     var cssW = cv.clientWidth || 420, cssH = cssW; // square
     var dpr = window.devicePixelRatio || 1;
@@ -43,8 +53,10 @@
     cv.style.height = cssH + 'px';
     var ctx = cv.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var scale = cssW / 256;
     CorrRender.render(ctx, state.data, {
-      width: cssW, height: cssH, type: c.type, drawAxes: true
+      width: cssW, height: cssH, type: c.type, drawAxes: true, alpha: c.opacity,
+      pointRadius: c.markSize * scale, lineWidth: c.markSize * scale
     });
   }
 
@@ -57,10 +69,8 @@
     cv.width = size; cv.height = size;
     var ctx = cv.getContext('2d');
     CorrRender.render(ctx, state.data, {
-      width: size, height: size, type: c.type, drawAxes: false,
-      pad: 10,
-      pointRadius: c.type === 'scatter' ? Math.max(1, 256 / 130) : undefined,
-      lineWidth: c.type === 'parallel' ? Math.max(0.6, 256 / 320) : undefined
+      width: size, height: size, type: c.type, drawAxes: false, pad: 10,
+      alpha: c.opacity, pointRadius: c.markSize, lineWidth: c.markSize
     });
     var rTag = (c.r < 0 ? 'm' : '') + Math.abs(c.r).toFixed(2).replace('.', '');
     var name = 'corr_' + c.type + '_r' + rTag + '_n' + c.n + '.png';
@@ -77,6 +87,8 @@
   $('npoints').addEventListener('change', regenerate);
   $('seed').addEventListener('change', regenerate);
   $('type').addEventListener('change', draw);
+  $('marksize').addEventListener('input', draw);
+  $('opacity').addEventListener('input', draw);
   $('regen').addEventListener('click', regenerate);
   $('export').addEventListener('click', exportPNG);
   window.addEventListener('resize', draw);

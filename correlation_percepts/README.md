@@ -19,11 +19,15 @@ python3 -m http.server 8000
 ```
 
 Controls: a **correlation slider** (r from −1 to 1), a **number-of-points** field,
-a **scatterplot / parallel-coordinates** toggle, an optional **random seed** (blank
-= fresh dataset each time), **Regenerate**, and **Export 256×256 PNG**. The page
-reports the achieved sample correlation (equal to the target to floating-point
-precision). The exported PNG omits axes — just the data marks on white — so the PS
-grayscale analysis sees the data layout as texture.
+a **scatterplot / parallel-coordinates** toggle, a **mark-size** slider (circle
+radius for scatter / line width for parallel coordinates, in 256px-export units),
+an **opacity** slider (default 1 = fully opaque), an optional **random seed** (blank
+= fresh dataset each time), **Regenerate**, and **Export 256×256 PNG**. Marks are
+**black**. The page reports the achieved sample correlation (equal to the target to
+floating-point precision). Mark size is in export-pixel units and scaled to the
+display, so what you see matches the exported PNG. The exported PNG omits axes —
+just the data marks on white — so the PS grayscale analysis sees the data layout as
+texture.
 
 ## How the data is generated (exact sample correlation)
 
@@ -55,8 +59,10 @@ done
 ```
 
 (`cli/corr_to_fixture.js` is the rasterizer; it writes the `nx ny nz` + floats
-fixture that `ps_stats` reads directly. It is a rasterization of the same marks as
-the browser canvas, not a pixel-exact copy.)
+fixture that `ps_stats` reads directly. It draws black marks and accepts optional
+`size markSize opacity` arguments after the seed, e.g.
+`jsc cli/corr_to_fixture.js -- <root> 200 0.8 scatter 1 256 4 0.5`. It is a
+rasterization of the same marks as the browser canvas, not a pixel-exact copy.)
 
 ## Files
 

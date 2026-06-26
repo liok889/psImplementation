@@ -65,6 +65,15 @@
           </select>
         </div>
         <div class="field">
+          <label>Mark size <span id="sizeVal" class="mono">2.0</span>
+            &nbsp;<span class="muted">(circle radius / line width, px @256)</span></label>
+          <input type="range" id="marksize" min="0.5" max="10" step="0.5" value="2">
+        </div>
+        <div class="field">
+          <label>Opacity <span id="opacityVal" class="mono">1.00</span></label>
+          <input type="range" id="opacity" min="0.05" max="1" step="0.05" value="1">
+        </div>
+        <div class="field">
           <label>Random seed (blank = random)</label>
           <input type="text" id="seed" placeholder="random">
         </div>
