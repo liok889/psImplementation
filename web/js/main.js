@@ -213,6 +213,13 @@
     state.lastSeed = seed;
     var mt = new PS.MT(seed);
 
+    // Match the C++ reference RNG state: it seeds ONE Mersenne Twister with the
+    // seed, and its grayscale analysis consumes N = nx*ny draws (the tiny
+    // stabilizing noise) BEFORE synthesis. Skip the same N draws here so that
+    // typing seed S yields the SAME white-noise initialization as
+    // `portilla_simoncelli ... -g S` (assuming output size == input size).
+    for (var sk = 0; sk < nx * ny; sk++) mt.genrandRes53();
+
     // initial noise (Line 3)
     var factor = Math.sqrt(stats.pixelStats[3]);
     for (var p = 0; p < nx * ny; p++) {

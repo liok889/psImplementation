@@ -72,13 +72,21 @@ downloads what's done.
 Output CSV — **one row per visualization** (two rows per pair):
 
 ```
-stimulus,vis,rbase,r,left_or_right,<1270 PS statistics columns>
+stimulus,vis,rbase,r,left_or_right,seed,npoints,<1270 PS statistics columns>
 ```
 
 `stimulus` = pair id (shared by its two rows), `vis` = visualization type
 (`scatter` / `parallel` / `orderedlines`), `r` = that plot's actual correlation,
-`left_or_right` = `L`/`R`, and the statistics columns use the abbreviated PS field
-names (scale/orientation/lag position indicators). The CSV is
+`left_or_right` = `L`/`R`, `seed` = the per-plot RNG seed, `npoints` = points used,
+and the statistics columns use the abbreviated PS field names
+(scale/orientation/lag position indicators).
+
+**Reproducing a stimulus:** every plot records its own `seed`, so you can recreate
+the exact image from the top controls — set the **visualization type**, enter the
+row's **`r`** in the precise number box next to the correlation slider, the
+**`seed`** in the seed field, **`npoints`**, and the same mark size/opacity, then
+**Regenerate**. (Data depends only on `n`, `r`, and `seed`; `r` is stored to 6
+decimals, which reproduces the plot to sub-pixel accuracy.) The CSV is
 assembled in memory and downloaded at the end; the default 7×2000 batch is
 ~28k rows / ~hundreds of MB, so you'll get a size confirmation before it starts.
 Requires the PS server (`server/`) running at the **PS server URL**.

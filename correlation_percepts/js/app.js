@@ -6,7 +6,9 @@
 
   function readControls() {
     return {
-      r: parseFloat($('corr').value),
+      // precise number box is authoritative (so a CSV r value can be entered
+      // exactly to reproduce a stimulus); the slider is a coarse adjuster
+      r: (function () { var v = parseFloat($('corrNum').value); return isFinite(v) ? Math.max(-1, Math.min(1, v)) : parseFloat($('corr').value); })(),
       n: Math.max(2, Math.min(20000, parseInt($('npoints').value, 10) || 2)),
       type: $('type').value,
       markSize: parseFloat($('marksize').value),   // px @ 256px export
@@ -164,7 +166,8 @@
   }
 
   // wiring: r / n / seed regenerate; switching vis type only redraws (same data)
-  $('corr').addEventListener('input', regenerate);
+  $('corr').addEventListener('input', function () { $('corrNum').value = $('corr').value; regenerate(); });
+  $('corrNum').addEventListener('input', function () { var v = parseFloat($('corrNum').value); if (isFinite(v)) $('corr').value = Math.max(-1, Math.min(1, v)); regenerate(); });
   $('npoints').addEventListener('change', regenerate);
   $('seed').addEventListener('change', regenerate);
   $('type').addEventListener('change', draw);
@@ -193,15 +196,19 @@
         const baseLeft = Math.random() < 0.5;
         const lb = (pair - 1) * 2 + (baseLeft ? 0 : 1);
         const lo2 = (pair - 1) * 2 + (baseLeft ? 1 : 0);
-        tasks[lb]  = { lineIndex: lb,  stim: pair, rbase: rbaseV, r: rbaseV,  lr: baseLeft ? 'L' : 'R' };
-        tasks[lo2] = { lineIndex: lo2, stim: pair, rbase: rbaseV, r: rOtherV, lr: baseLeft ? 'R' : 'L' };
+        // each plot gets its own reproducible seed (record it in the CSV)
+        const seedBase = (Math.random() * 4294967296) >>> 0;
+        const seedOther = (Math.random() * 4294967296) >>> 0;
+        tasks[lb]  = { lineIndex: lb,  stim: pair, rbase: rbaseV, r: rbaseV,  lr: baseLeft ? 'L' : 'R', seed: seedBase };
+        tasks[lo2] = { lineIndex: lo2, stim: pair, rbase: rbaseV, r: rOtherV, lr: baseLeft ? 'R' : 'L', seed: seedOther };
       }
     }
     return tasks;
   }
-  // render a fresh dataset at correlation r to a 256x256 grayscale pixel array
-  function renderGrayForR(r, c) {
-    const data = CorrGen.generate(c.n, r, null);
+  // render a dataset at correlation r (with the given seed, for reproducibility)
+  // to a 256x256 grayscale pixel array
+  function renderGrayForR(r, c, seed) {
+    const data = CorrGen.generate(c.n, r, seed);
     const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256;
     CorrRender.render(cv.getContext('2d'), data, {
       width: 256, height: 256, type: c.type, drawAxes: false, pad: 10,
@@ -209,12 +216,12 @@
     return grayPixelsFromCanvas(cv);
   }
   function fmtStat(v) { return isFinite(v) ? '' + (+v.toPrecision(7)) : '0'; }
-  function fmtR(v) { return '' + (+v.toFixed(4)); }
+  function fmtR(v) { return '' + (+v.toFixed(6)); }   // enough precision to reproduce the plot
   function visLabel(t) { return t === 'ordered' ? 'orderedlines' : t; }   // scatter | parallel | orderedlines
-  function rowStr(t, raw, vis) {
-    const a = new Array(5 + raw.length);
-    a[0] = t.stim; a[1] = vis; a[2] = fmtR(t.rbase); a[3] = fmtR(t.r); a[4] = t.lr;
-    for (let i = 0; i < raw.length; i++) a[5 + i] = fmtStat(raw[i]);
+  function rowStr(t, raw, vis, n) {
+    const a = new Array(7 + raw.length);
+    a[0] = t.stim; a[1] = vis; a[2] = fmtR(t.rbase); a[3] = fmtR(t.r); a[4] = t.lr; a[5] = t.seed; a[6] = n;
+    for (let i = 0; i < raw.length; i++) a[7 + i] = fmtStat(raw[i]);
     return a.join(',');
   }
   function analyzeReq(url, gray, lean) {
@@ -283,10 +290,10 @@
     // probe the first task non-lean to capture the CSV header (stat names)
     let header;
     try {
-      const g0 = renderGrayForR(tasks[0].r, c);
+      const g0 = renderGrayForR(tasks[0].r, c, tasks[0].seed);
       const probe = await analyzeReq(url, g0, false);
-      header = ['stimulus', 'vis', 'rbase', 'r', 'left_or_right'].concat(probe.stats.annotated.map(function (a) { return a.key; }));
-      rows[tasks[0].lineIndex] = rowStr(tasks[0], probe.stats.raw, vis);
+      header = ['stimulus', 'vis', 'rbase', 'r', 'left_or_right', 'seed', 'npoints'].concat(probe.stats.annotated.map(function (a) { return a.key; }));
+      rows[tasks[0].lineIndex] = rowStr(tasks[0], probe.stats.raw, vis, c.n);
       processed = 1; pushRecent(tasks[0], g0);
     } catch (e) {
       $('genNote').textContent = 'cannot reach PS server at ' + url + ' (' + e.message + ') — is it running?';
@@ -301,9 +308,9 @@
       while (idx < rest.length && !gen.stop) {
         const t = rest[idx++];
         try {
-          const g = renderGrayForR(t.r, c);
+          const g = renderGrayForR(t.r, c, t.seed);
           const res = await analyzeReq(url, g, true);
-          rows[t.lineIndex] = rowStr(t, res.raw, vis);
+          rows[t.lineIndex] = rowStr(t, res.raw, vis, c.n);
           if ((processed % 7) === 0) pushRecent(t, g);
         } catch (e) { errors++; }
         processed++;

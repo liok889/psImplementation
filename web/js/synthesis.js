@@ -173,6 +173,11 @@
     // initialize noise (Line 3), grayscale
     if (!params.noise) {
       if (nz === 1) {
+        // Align with the C++ RNG: the reference's grayscale analysis consumes
+        // N = nx*ny draws (stabilizing noise) from the same seeded MT before
+        // synthesis, so skip them here to reproduce its white-noise init for the
+        // same seed (assumes output size == input size).
+        for (var sk = 0; sk < nxout * nyout; sk++) mt.genrandRes53();
         var factor = Math.sqrt(stats.pixelStats[3]);
         for (var p = 0; p < nxout * nyout; p++) {
           var u1 = mt.genrandRes53(), u2 = mt.genrandRes53();

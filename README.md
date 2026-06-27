@@ -45,7 +45,11 @@ App features:
   ~1270 scalar constraints (structured JSON with a legend for each field).
 - **Random seed** box in the synthesis panel — leave blank for a fresh pseudo-random
   texture each run, or enter an integer to reproduce a specific result. The seed
-  actually used is reported under the preview (same seed ⇒ identical output).
+  actually used is reported under the preview (same seed ⇒ identical output). The
+  seed **matches the C++ reference's `-g` seed**: the JS reproduces the same
+  white-noise initialization as `portilla_simoncelli … -g <seed>` (it skips the
+  same `N = nx·ny` analysis-noise draws first), verified bit-identical — so the two
+  implementations' syntheses are qualitatively comparable for a given seed.
 - **Download synthesized stats (JSON)** — re-analyzes the synthesized texture and
   exports *its* statistics, so you can diff synthesized-vs-target constraints.
 
