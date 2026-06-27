@@ -398,10 +398,16 @@ texture</strong>.</p>
 - <strong>Random seed</strong> box in the synthesis panel — leave blank
 for a fresh pseudo-random texture each run, or enter an integer to
 reproduce a specific result. The seed actually used is reported under
-the preview (same seed ⇒ identical output). - <strong>Download
-synthesized stats (JSON)</strong> — re-analyzes the synthesized texture
-and exports <em>its</em> statistics, so you can diff
-synthesized-vs-target constraints.</p>
+the preview (same seed ⇒ identical output). The seed <strong>matches the
+C++ reference’s <code>-g</code> seed</strong>: the JS reproduces the
+same white-noise initialization as
+<code>portilla_simoncelli … -g &lt;seed&gt;</code> (it skips the same
+<code>N = nx·ny</code> analysis-noise draws first), verified
+bit-identical — so the two implementations’ syntheses are qualitatively
+comparable for a given seed. - <strong>Download synthesized stats
+(JSON)</strong> — re-analyzes the synthesized texture and exports
+<em>its</em> statistics, so you can diff synthesized-vs-target
+constraints.</p>
 </div>
 <div id="quick-start-run-the-validation" class="section level2">
 <h2>Quick start — run the validation</h2>
@@ -419,6 +425,24 @@ skewLow               5       1.8144      2.329e-7     1.284e-7  PASS
 parentRealCor        96       7.1473      3.034e-6     4.244e-7  PASS
 -----------------------------------------------------------------------
 ALL GROUPS PASS</code></pre>
+</div>
+<div id="command-line-js-statistics-tool" class="section level2">
+<h2>Command-line JS statistics tool</h2>
+<p>A headless analog of the reference’s <code>-S</code>/<code>-H</code>
+mode, using the JavaScript implementation (via JavaScriptCore
+<code>jsc</code>). It prints the synthesis-relevant statistics as CSV to
+stdout, in the same order — and with <code>-H 1</code>, the same
+abbreviated header names — as the C++ tool:</p>
+<pre class="bash"><code>cli/ps_stats reference/data/sample.png            # one CSV line of values
+cli/ps_stats reference/data/sample.png -H 1       # header row + values
+cli/ps_stats reference/data/sample.png -s 3 -k 5 -N 5 -H 1
+cli/ps_stats test/fixture_gray.txt -H 1           # a .txt fixture also works</code></pre>
+<p>A PNG/JPG/TIFF input is decoded to a grayscale fixture via
+<code>tools/png_to_fixture.py</code>; a <code>.txt</code> fixture
+(<code>nx ny nz</code> then floats) is used directly. Its output’s
+header row is byte-identical to
+<code>portilla_simoncelli … -S 1 -H 1</code>, and the values match to
+~4e-7 (float-vs-double).</p>
 <hr />
 </div>
 <div id="how-validation-works-and-why-its-set-up-this-way" class="section level2">
@@ -496,6 +520,26 @@ on arm64 macOS <code>long double == double</code>, which made two
 <code>switch</code> <code>case</code> labels collide — the
 <code>long double</code> case is now guarded by
 <code>__LDBL_MANT_DIG__</code>.)</p>
+<p><strong>Statistics-only mode (<code>-S</code>).</strong> The
+reference has an added flag that runs the analysis and prints the
+synthesis-relevant summary statistics as a single CSV line to stdout (no
+header), then skips synthesis:</p>
+<pre class="bash"><code>./portilla_simoncelli data/sample.png -S 1 &gt; stats.csv</code></pre>
+<p>In <code>-S</code> mode the <strong>output path is optional</strong>
+and <strong>grayscale is forced</strong> (a color input is converted,
+with a note to stderr), so the single command above is enough.</p>
+<p>Add <code>-H 1</code> to also emit a <strong>header row</strong> of
+abbreviated column names that encode each statistic’s origin — scale
+<code>s</code>, orientation <code>o</code>, lag
+<code>dx</code>/<code>dy</code>, parent real/imag band —
+e.g. <code>autoCorrLow_s0_dx-3_dy-3</code>, <code>magMean_s1_o2</code>,
+<code>parentRealCorr_s2_3_o3_im3</code>:</p>
+<pre class="bash"><code>./portilla_simoncelli data/sample.png -S 1 -H 1 &gt; stats.csv</code></pre>
+<p>The values and their order match the JavaScript implementation’s raw
+export exactly (including <code>magMeans</code>, which the
+<code>-o</code> text dump omits). Verify with
+<code>bash test/verify_cpp_csv.sh</code> — the C++ and JS outputs agree
+value-by-value to ~4e-7 (float-vs-double rounding).</p>
 <p><strong>Benchmark — JS vs native C++</strong>, analysis and synthesis
 timed separately, same 256×256 grayscale fixture, same parameters (P=4,
 K=4, Na=7, 50 iterations), both single-threaded (native = real FFTW, JS
@@ -557,12 +601,19 @@ multi-threaded binary is actually slower than single-threaded here.)</p>
     synthesis.js           iterative synthesis + adjust_constraints        [synthesis.cpp]
     main.js                UI controller (upload, render, synthesize)
 reference_harness/         C++ statistics harness (genuine reference code + FFTW shim)
+cli/ps_stats[.js]          headless JS stats tool (CSV to stdout; C++ -S/-H analog)
 tools/png_to_fixture.py    stdlib PNG decoder -&gt; shared fixture
 test/
   run.sh                   full pipeline
   run_validation.js        JS analysis vs C++ reference (jsc)
   run_synthesis_check.js   JS synthesis convergence (jsc)
-reference/                 the original C++ implementation (unmodified)</code></pre>
+reference/                 the original C++ implementation (unmodified)
+correlation_percepts/      bivariate correlation-stimulus generator (scatter /
+                           parallel coords, D3) + 256x256 PNG export for the PS
+                           pipeline; see its own README
+server/                    Node worker-pool HTTP service: POST an image, get
+                           analysis stats and/or a synthesized texture; see its
+                           own README</code></pre>
 <p>The JS keeps the reference’s data conventions verbatim: planar
 channels with linear index <code>i + j*nx + k*nx*ny</code>, and FFTW
 transform conventions (forward <code>e^{-2πi}</code>, inverse
