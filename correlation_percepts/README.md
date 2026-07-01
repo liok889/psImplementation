@@ -123,7 +123,15 @@ Flags (defaults in parentheses): `--bases "0.2,…,0.8"`, `--per-base 2000`,
 `--jobs N` (default: CPU count − 1). `-h`/`--help` prints the full usage. The CSV
 goes to stdout/`--out`; progress goes to stderr. Smaller `--size` fits fewer
 pyramid scales, so the PS analysis clamps `N_pyr` and emits fewer statistic
-columns (the default 256 gives the full 1270). Throughput is ~75 plots/s on 13 workers for 100-point scatterplots, so
+columns (the default 256 gives the full 1270).
+
+**Sanity-check mode** — `--test-vis X` skips the CSV entirely and instead writes
+`X` randomly-sampled stimuli as PNGs into the `--out` directory (default
+`gen_testvis/`): for each, `*_input.png` (the rendered input plot) and
+`*_synth.png` (its Portilla–Simoncelli synthesis), so you can eyeball that the
+rendering and the PS pipeline look right. Only the sampled plots are computed and
+the tool exits immediately after. Example:
+`cli/gen_stimuli --test-vis 5 --type scatter --out check/`. Throughput is ~75 plots/s on 13 workers for 100-point scatterplots, so
 the default 28k-plot set takes ~6 min.
 
 **Correspondence with the browser.** The task-building and CSV format

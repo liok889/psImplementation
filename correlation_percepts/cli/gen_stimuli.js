@@ -30,6 +30,7 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const zlib = require('zlib');
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 
 const ROOT = path.join(__dirname, '..', '..');
@@ -60,6 +61,39 @@ function cropClamp(image, nx, ny, P, Na) {
   const out = new Float64Array(cnx * cny);
   for (let j = 0; j < cny; j++) for (let i = 0; i < cnx; i++) out[i + j * cnx] = image[(i + rx) + (j + ry) * nx];
   return { image: out, nx: cnx, ny: cny, P: P };
+}
+
+// --- minimal 8-bit grayscale PNG writer (Node built-in zlib only) ---
+function crc32(buf) {
+  let c = ~0;
+  for (let i = 0; i < buf.length; i++) { c ^= buf[i]; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xEDB88320 & -(c & 1)); }
+  return (~c) >>> 0;
+}
+function pngChunk(type, data) {
+  const len = Buffer.alloc(4); len.writeUInt32BE(data.length, 0);
+  const t = Buffer.from(type, 'latin1');
+  const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(Buffer.concat([t, data])), 0);
+  return Buffer.concat([len, t, data, crc]);
+}
+function writeGrayPNG(file, pixels, w, h) {
+  const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8; ihdr[9] = 0; // 8-bit, grayscale (color type 0)
+  const raw = Buffer.alloc((w + 1) * h);
+  for (let y = 0; y < h; y++) {
+    raw[y * (w + 1)] = 0; // filter: none
+    for (let x = 0; x < w; x++) { let v = Math.round(pixels[y * w + x]); v = v < 0 ? 0 : v > 255 ? 255 : v; raw[y * (w + 1) + 1 + x] = v; }
+  }
+  const idat = zlib.deflateSync(raw);
+  fs.writeFileSync(file, Buffer.concat([sig, pngChunk('IHDR', ihdr), pngChunk('IDAT', idat), pngChunk('IEND', Buffer.alloc(0))]));
+}
+// pick `k` distinct indices from [0,n) uniformly at random (partial Fisher-Yates)
+function pickDistinct(n, k, rand) {
+  const a = new Array(n); for (let i = 0; i < n; i++) a[i] = i;
+  k = Math.min(k, n);
+  for (let i = 0; i < k; i++) { const j = i + Math.floor(rand() * (n - i)); const t = a[i]; a[i] = a[j]; a[j] = t; }
+  return a.slice(0, k);
 }
 
 // ============================ WORKER ============================
@@ -124,6 +158,7 @@ function parseArgs(argv) {
     N_steer: parseInt(get('steer', '4'), 10),
     N_pyr: parseInt(get('scales', '4'), 10),
     Na: parseInt(get('na', '7'), 10),
+    testVis: parseInt(get('test-vis', '0'), 10),
     seed: get('seed', '') === '' ? (Math.floor(Math.random() * 4294967296) >>> 0) : (parseInt(get('seed', ''), 10) >>> 0),
     _seedGiven: a.indexOf('--seed') >= 0,
     out: get('out', ''),
@@ -166,8 +201,14 @@ OPTIONS (defaults in brackets — identical to the browser UI)
   Run control
     --seed UINT         reproducible collection (default: random, printed)
     --jobs N            parallel worker threads                   [CPU count - 1]
-    --out FILE          write CSV here                            [stdout]
+    --out FILE          write CSV here (in --test-vis mode: output DIR) [stdout]
     -h, --help          show this help
+
+  Sanity check
+    --test-vis X        don't generate the CSV; instead render X randomly-chosen
+                        stimuli as PNGs (each plot's input visualization + its PS
+                        synthesis) into the --out directory [gen_testvis] and exit.
+                        Only the sampled plots are computed.
 
 NOTES
   CSV goes to --out (or stdout); progress goes to stderr. Runs are reproducible
@@ -181,11 +222,47 @@ EXAMPLES
   cli/gen_stimuli --type parallel --npoints 200 --marksize 1 --opacity 0.5 --out pc.csv
 `;
 
+// --test-vis mode: render X randomly-chosen stimuli as PNGs — the input
+// visualization and its PS synthesis — for a quick sanity check. No CSV is
+// produced, and only the sampled plots are computed, so it returns promptly.
+function testVisMode(cfg) {
+  const { CorrGen, CorrRaster, CorrCollection, PS } = loadModules();
+  const tasks = CorrCollection.buildTasks(
+    { bases: cfg.bases, n: cfg.perBase, range: cfg.range, sign: cfg.sign, participants: cfg.participants },
+    CorrCollection.mulberry32(cfg.seed >>> 0));
+  const total = tasks.length;
+  const X = Math.min(cfg.testVis, total);
+  const idxs = pickDistinct(total, X, Math.random);         // fresh random sample each run
+  const dir = cfg.out || 'gen_testvis';
+  fs.mkdirSync(dir, { recursive: true });
+  process.stderr.write(`test-vis: rendering ${X} of ${total} random stimuli (input + PS synthesis) to ${dir}/ — no CSV\n`);
+
+  const t0 = Date.now();
+  for (let n = 0; n < X; n++) {
+    const t = tasks[idxs[n]];
+    const pts = CorrGen.generate(cfg.npoints, t.r, t.seed);
+    const raster = CorrRaster.rasterize(pts, { size: cfg.size, type: cfg.type, markSize: cfg.markSize, opacity: cfg.opacity, pad: 10 });
+    const c = cropClamp(raster, cfg.size, cfg.size, cfg.N_pyr, cfg.Na);
+    const params = { N_steer: cfg.N_steer, N_pyr: c.P, N_iteration: 50, Na: cfg.Na, noise: 0,
+                     edge_handling: 0, add_smooth: 0, cmask: [1, 1, 1, 1], verbose: 0, interpWeight: -1, statistics: 0 };
+    const stats = PS.Analysis.analysis({ image: c.image, nx: c.nx, ny: c.ny, nz: 1 }, params, new PS.MT(0)).stats;
+    const tex = { image: new Float64Array(c.nx * c.ny), nx: c.nx, ny: c.ny, nz: 1 };
+    PS.Synthesis.synthesis(tex, stats, params, new PS.MT((Math.random() * 4294967296) >>> 0));
+
+    const tag = `testvis_${String(n + 1).padStart(2, '0')}_p${t.participant}_s${t.stim}${t.lr}_r${+t.r.toFixed(3)}`;
+    writeGrayPNG(path.join(dir, tag + '_input.png'), raster, cfg.size, cfg.size);
+    writeGrayPNG(path.join(dir, tag + '_synth.png'), tex.image, c.nx, c.ny);
+    process.stderr.write(`  [${n + 1}/${X}] ${tag}  (input ${cfg.size}×${cfg.size}, synth ${c.nx}×${c.ny})\n`);
+  }
+  process.stderr.write(`done: wrote ${X * 2} PNGs to ${dir}/ in ${((Date.now() - t0) / 1000).toFixed(1)}s\n`);
+}
+
 function main() {
   const a = process.argv.slice(2);
   if (a.includes('-h') || a.includes('--help')) { process.stdout.write(HELP); process.exit(0); }
   const cfg = parseArgs(process.argv);
   if (!cfg.bases.length) { process.stderr.write('no valid base correlation levels\n'); process.exit(2); }
+  if (cfg.testVis > 0) { testVisMode(cfg); return; }
   const total = 2 * cfg.perBase * cfg.bases.length * cfg.participants;
   let jobs = Math.max(1, Math.min(cfg.jobs, Math.ceil(total / 1)));
   const chunk = Math.ceil(total / jobs);
