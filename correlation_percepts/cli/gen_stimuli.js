@@ -130,7 +130,7 @@ if (!isMainThread) {
     buf.push(CorrCollection.rowStr(t, obj.raw, vis, cfg.npoints) + '\n');
     done++;
     if (buf.length >= 256) flush();
-    if ((done & 63) === 0) parentPort.postMessage({ type: 'progress', done });
+    if ((done & 15) === 0) parentPort.postMessage({ type: 'progress', done });
   }
   flush();
   fs.closeSync(fd);
@@ -277,11 +277,27 @@ function main() {
   const perWorkerDone = new Array(jobs).fill(0);
   const parts = [];
   let finished = 0;
+  const isTTY = !!process.stderr.isTTY;
+  let lastRender = 0;
 
-  function progress() {
+  function fmtDur(s) {
+    if (!isFinite(s) || s < 0) s = 0;
+    return s >= 60 ? Math.floor(s / 60) + 'm' + String(Math.round(s % 60)).padStart(2, '0') + 's' : s.toFixed(0) + 's';
+  }
+  // Progress bar → stderr. In-place (\r) on a TTY; a fresh line every ~2s when
+  // stderr is redirected/piped so logs stay readable. `force` bypasses throttle.
+  function progress(force) {
+    const now = Date.now();
+    if (!force && now - lastRender < (isTTY ? 100 : 2000)) return;
+    lastRender = now;
     const d = perWorkerDone.reduce((s, x) => s + x, 0);
-    const el = (Date.now() - t0) / 1000, rate = d / Math.max(el, 1e-6);
-    process.stderr.write(`\r  ${d} / ${total} plots · ${rate.toFixed(1)} plots/s · ETA ${((total - d) / Math.max(rate, 1e-6)).toFixed(0)}s   `);
+    const frac = total ? Math.min(1, d / total) : 1;
+    const el = (now - t0) / 1000, rate = d / Math.max(el, 1e-6);
+    const width = 28, filled = Math.round(frac * width);
+    const bar = '█'.repeat(filled) + '░'.repeat(width - filled);
+    const eta = d > 0 ? fmtDur((total - d) / Math.max(rate, 1e-6)) : '—';
+    const line = `  [${bar}] ${String(Math.round(100 * frac)).padStart(3)}%  ${d}/${total}  ${rate.toFixed(0)} plots/s  ETA ${eta}`;
+    process.stderr.write(isTTY ? '\r' + line + '   ' : line + '\n');
   }
 
   let launched = 0;
@@ -297,16 +313,17 @@ function main() {
     w.on('message', (m) => {
       if (m.type === 'progress') { perWorkerDone[j] = m.done; progress(); }
       else if (m.type === 'done') {
-        perWorkerDone[j] = m.done; finished++;
+        perWorkerDone[j] = m.done; finished++; progress(true);
         if (finished === launched) assemble();
       }
     });
     w.on('error', (e) => { process.stderr.write('\nworker error: ' + e.stack + '\n'); process.exit(1); });
   }
+  progress(true);   // show 0% immediately
 
   function assemble() {
-    progress();
-    process.stderr.write('\n');
+    progress(true);
+    if (isTTY) process.stderr.write('\n');
     // concatenate part files in order (part 0 carries the header)
     const outFd = cfg.out ? fs.openSync(cfg.out, 'w') : 1; // 1 = stdout
     for (let j = 0; j < parts.length; j++) {
