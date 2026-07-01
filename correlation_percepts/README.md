@@ -52,6 +52,7 @@ PS server.
 Inputs:
 - **Base correlation levels** (`rbase`, comma-separated; default `0.2 … 0.8`)
 - **Stimuli (pairs) per base** (default 2000)
+- **Participants** (replications of the full design; default 1)
 - **Test range** (offset, 0.1–1; default 0.2)
 - **Correlation sign** (positive / negative)
 - **Max concurrent server requests** (browsers cap ~6 connections per origin)
@@ -61,6 +62,12 @@ For each base level it generates `N` pairs. In each pair, one plot is at exactly
 `[0,1]`); which side (left/right) is the base is randomized. Negative sign negates
 both (magnitudes still cropped in `[0,1]` first). Plots use the **current**
 visualization type / points / mark size / opacity controls.
+
+**Participants** replicate the whole design: the total number of stimuli is
+`pairs-per-base × #bases × #participants`. Each participant is an independent
+draw of the same design, and the `stimulus` id restarts at 1 per participant
+(a trial number within that participant). Default `1` reproduces the previous
+single-set behaviour.
 
 Generation is **non-blocking** (a worker-style concurrency pool of `fetch`
 requests to the server) with a **progress bar**, throughput, and ETA. About every
@@ -72,10 +79,12 @@ downloads what's done.
 Output CSV — **one row per visualization** (two rows per pair):
 
 ```
-stimulus,vis,rbase,r,left_or_right,seed,npoints,<1270 PS statistics columns>
+stimulus,participant,vis,rbase,r,left_or_right,seed,npoints,<1270 PS statistics columns>
 ```
 
-`stimulus` = pair id (shared by its two rows), `vis` = visualization type
+`stimulus` = pair id (shared by its two rows, restarts per participant),
+`participant` = participant/replication id (integer, right after `stimulus`),
+`vis` = visualization type
 (`scatter` / `parallel` / `orderedlines`), `r` = that plot's actual correlation,
 `left_or_right` = `L`/`R`, `seed` = the per-plot RNG seed, `npoints` = points used,
 and the statistics columns use the abbreviated PS field names
@@ -90,6 +99,42 @@ decimals, which reproduces the plot to sub-pixel accuracy.) The CSV is
 assembled in memory and downloaded at the end; the default 7×2000 batch is
 ~28k rows / ~hundreds of MB, so you'll get a size confirmation before it starts.
 Requires the PS server (`server/`) running at the **PS server URL**.
+
+## Command-line collection generator (Node.js, parallel)
+
+`cli/gen_stimuli` is the headless counterpart of the **Stimulus collection
+generation** panel: it produces the same labelled CSV without a browser or the PS
+server, using Node.js `worker_threads` for native parallelism and file I/O. Every
+UI parameter is exposed as a flag and the **defaults match the UI**.
+
+```bash
+# small labelled set (2 bases × 3 pairs × 2 participants), reproducible
+cli/gen_stimuli --bases "0.3,0.6" --per-base 3 --participants 2 --seed 42 --out set.csv
+
+# the UI-default 7-base × 2000-pair set, 8 worker threads
+cli/gen_stimuli --per-base 2000 --jobs 8 --out stimuli.csv
+```
+
+Flags (defaults in parentheses): `--bases "0.2,…,0.8"`, `--per-base 2000`,
+`--participants 1`, `--range 0.2`, `--sign pos|neg`, `--npoints 100`,
+`--type scatter|parallel|ordered`, `--marksize 2`, `--opacity 1`, `--size 256`,
+`--steer 4` `--scales 4` `--na 7` (PS `N_steer`/`N_pyr`/`Na`), `--seed <uint>`
+(default: a random seed, printed to stderr), `--out FILE` (default: stdout),
+`--jobs N` (default: CPU count − 1). The CSV goes to stdout/`--out`; progress goes
+to stderr. Throughput is ~75 plots/s on 13 workers for 100-point scatterplots, so
+the default 28k-plot set takes ~6 min.
+
+**Correspondence with the browser.** The task-building and CSV format
+(`js/collection.js` → `CorrCollection`) and the exact-correlation data generator
+(`js/gen.js` → `CorrGen`) are the **same modules** the browser uses, so task
+lists and CSV rows are byte-identical for the same RNG stream, and the PS
+analysis is the same reference-validated code (matches `cli/ps_stats` to 0.0).
+The **one** difference is rasterization: the browser draws antialiased HTML-canvas
+marks, while the CLI (and `cli/corr_to_fixture.js`) use `js/raster.js`
+(`CorrRaster`) — hard-edged, deterministic, dependency-free. So PS statistic
+*values* differ slightly by rendering; everything else corresponds exactly. Runs
+are reproducible (fixed `--seed`) and parallelism never changes the output
+(chunking by line index; `--jobs 1` ≡ `--jobs 8`).
 
 ## How the data is generated (exact sample correlation)
 
@@ -132,8 +177,11 @@ rasterization of the same marks as the browser canvas, not a pixel-exact copy.)
 index.html              browser UI
 js/gen.js               exact-sample-correlation bivariate generator (CorrGen)
 js/render.js            canvas renderer for scatter / parallel coords (CorrRender)
+js/raster.js            headless hard-edged rasterizer (CorrRaster) — shared by CLI tools
+js/collection.js        shared task-building + CSV format (CorrCollection) — browser & CLI
 js/app.js               UI controller (slider, points, type, seed, PNG export)
 lib/d3.v7.min.js        vendored D3 (offline, no CDN)
-cli/corr_to_fixture.js  headless rasterizer -> 256x256 grayscale fixture (jsc)
-cli/corr_stats          batch: dataset -> stimulus -> PS statistics CSV
+cli/gen_stimuli(.js)    Node.js parallel collection generator (all UI params as flags)
+cli/corr_to_fixture.js  headless rasterizer -> size×size grayscale fixture (jsc, uses CorrRaster)
+cli/corr_stats          batch: single dataset -> stimulus -> PS statistics CSV (jsc)
 ```

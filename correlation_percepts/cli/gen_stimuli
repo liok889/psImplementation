@@ -1,0 +1,11 @@
+#!/bin/bash
+# Thin launcher for the Node.js stimulus-collection generator. Node handles
+# parallelism (worker_threads) and file I/O internally; see gen_stimuli.js for
+# the full flag list (all browser UI parameters are exposed; defaults match).
+#
+# Examples:
+#   cli/gen_stimuli --bases "0.3,0.6" --per-base 5 --participants 2 --out set.csv
+#   cli/gen_stimuli --per-base 2000 --seed 42 --jobs 8 --out big.csv
+HERE="$(cd "$(dirname "$0")" && pwd)"
+NODE="${NODE:-$(command -v node || echo /opt/local/bin/node)}"
+exec "$NODE" "$HERE/gen_stimuli.js" "$@"

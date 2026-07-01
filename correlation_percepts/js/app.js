@@ -180,31 +180,14 @@
   window.addEventListener('resize', draw);
 
   // ===================== stimulus collection generation =====================
-  // Build a list of plot "tasks". For each base level, `n` pairs: one plot at
-  // exactly rbase, the other at r ~ Uniform[rbase-range, rbase+range] cropped to
-  // [0,1]; left/right (which is the base) is randomized. Negative sign negates
-  // both. Each plot becomes one CSV line; the two lines of a pair are adjacent.
-  function buildTasks(cfg) {
-    const tasks = []; let pair = 0;
-    for (let bi = 0; bi < cfg.bases.length; bi++) {
-      const rb = cfg.bases[bi];
-      const lo = Math.max(0, rb - cfg.range), hi = Math.min(1, rb + cfg.range);
-      for (let k = 0; k < cfg.n; k++) {
-        pair++;
-        const rOther = lo + Math.random() * (hi - lo);
-        const rbaseV = cfg.sign * rb, rOtherV = cfg.sign * rOther;
-        const baseLeft = Math.random() < 0.5;
-        const lb = (pair - 1) * 2 + (baseLeft ? 0 : 1);
-        const lo2 = (pair - 1) * 2 + (baseLeft ? 1 : 0);
-        // each plot gets its own reproducible seed (record it in the CSV)
-        const seedBase = (Math.random() * 4294967296) >>> 0;
-        const seedOther = (Math.random() * 4294967296) >>> 0;
-        tasks[lb]  = { lineIndex: lb,  stim: pair, rbase: rbaseV, r: rbaseV,  lr: baseLeft ? 'L' : 'R', seed: seedBase };
-        tasks[lo2] = { lineIndex: lo2, stim: pair, rbase: rbaseV, r: rOtherV, lr: baseLeft ? 'R' : 'L', seed: seedOther };
-      }
-    }
-    return tasks;
-  }
+  // The task-building and CSV-format logic lives in js/collection.js
+  // (CorrCollection) so the browser and the command-line generator
+  // (cli/gen_stimuli.js) produce identical task lists and CSV rows. The browser
+  // draws each plot on a canvas (below); the CLI uses the CorrRaster rasterizer.
+  const buildTasks = function (cfg) { return CorrCollection.buildTasks(cfg, Math.random); };
+  const rowStr = CorrCollection.rowStr;
+  const visLabel = CorrCollection.visLabel;
+
   // render a dataset at correlation r (with the given seed, for reproducibility)
   // to a 256x256 grayscale pixel array
   function renderGrayForR(r, c, seed) {
@@ -214,15 +197,6 @@
       width: 256, height: 256, type: c.type, drawAxes: false, pad: 10,
       alpha: c.opacity, pointRadius: c.markSize, lineWidth: c.markSize });
     return grayPixelsFromCanvas(cv);
-  }
-  function fmtStat(v) { return isFinite(v) ? '' + (+v.toPrecision(7)) : '0'; }
-  function fmtR(v) { return '' + (+v.toFixed(6)); }   // enough precision to reproduce the plot
-  function visLabel(t) { return t === 'ordered' ? 'orderedlines' : t; }   // scatter | parallel | orderedlines
-  function rowStr(t, raw, vis, n) {
-    const a = new Array(7 + raw.length);
-    a[0] = t.stim; a[1] = vis; a[2] = fmtR(t.rbase); a[3] = fmtR(t.r); a[4] = t.lr; a[5] = t.seed; a[6] = n;
-    for (let i = 0; i < raw.length; i++) a[7 + i] = fmtStat(raw[i]);
-    return a.join(',');
   }
   function analyzeReq(url, gray, lean) {
     return fetch(url + '/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -260,13 +234,14 @@
     const url = ($('serverUrl').value || '').trim().replace(/\/+$/, '');
     const bases = ($('rbaseList').value || '').split(',').map(function (s) { return parseFloat(s.trim()); }).filter(function (x) { return isFinite(x); });
     const n = Math.max(1, parseInt($('nStimuli').value, 10) || 1);
+    const participants = Math.max(1, parseInt($('nParticipants').value, 10) || 1);
     const range = Math.min(1, Math.max(0.1, parseFloat($('testRange').value) || 0.2));
     const signEl = document.querySelector('input[name=sign]:checked');
     const sign = (signEl && signEl.value === 'neg') ? -1 : 1;
     const K = Math.max(1, parseInt($('concurrency').value, 10) || 8);
     if (!bases.length) { $('genNote').textContent = 'enter at least one base correlation level'; return; }
 
-    const tasks = buildTasks({ bases: bases, n: n, range: range, sign: sign });
+    const tasks = buildTasks({ bases: bases, n: n, range: range, sign: sign, participants: participants });
     const total = tasks.length;
     const estMB = Math.round(total * 13000 / 1e6);
     if (estMB > 250 && !window.confirm('This will build ~' + estMB + ' MB of CSV in memory (' + total + ' rows). Continue?')) return;
@@ -292,7 +267,7 @@
     try {
       const g0 = renderGrayForR(tasks[0].r, c, tasks[0].seed);
       const probe = await analyzeReq(url, g0, false);
-      header = ['stimulus', 'vis', 'rbase', 'r', 'left_or_right', 'seed', 'npoints'].concat(probe.stats.annotated.map(function (a) { return a.key; }));
+      header = CorrCollection.header(probe.stats.annotated.map(function (a) { return a.key; }));
       rows[tasks[0].lineIndex] = rowStr(tasks[0], probe.stats.raw, vis, c.n);
       processed = 1; pushRecent(tasks[0], g0);
     } catch (e) {
@@ -327,7 +302,7 @@
     for (let i = 0; i < rows.length; i++) if (rows[i] !== undefined) { parts.push(rows[i] + '\n'); written++; }
     const blob = new Blob(parts, { type: 'text/csv' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = 'stimuli_' + c.type + '_' + (sign < 0 ? 'neg' : 'pos') + '_' + bases.length + 'bases_' + n + 'x.csv';
+    a.download = 'stimuli_' + c.type + '_' + (sign < 0 ? 'neg' : 'pos') + '_' + bases.length + 'bases_' + n + 'x_' + participants + 'p.csv';
     document.body.appendChild(a); a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); a.parentNode && a.parentNode.removeChild(a); }, 1000);
     $('genNote').textContent = (gen.stop ? 'stopped — ' : 'done — ') + 'downloaded ' + a.download +
