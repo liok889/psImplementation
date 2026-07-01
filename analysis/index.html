@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Correlation Discrimination — PS-statistics LDA</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #171a23; --panel2: #1f2330; --ink: #e6e9ef;
+    --muted: #97a0b3; --accent: #5b9dff; --accent2: #46d39a; --line: #2a2f3d;
+    --warn: #ffb454; --train: #ffb454; --test: #5b9dff; --chance: #6b7280;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 22px 26px 12px; border-bottom: 1px solid var(--line); }
+  h1 { margin: 0 0 4px; font-size: 20px; font-weight: 650; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); max-width: 900px; }
+  main { padding: 18px 26px 60px; max-width: 1100px; margin: 0 auto; }
+  .panel { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 18px; margin: 16px 0; }
+  .panel h2 { margin: 0 0 12px; font-size: 15px; font-weight: 620; letter-spacing: .02em; }
+  .panel h2 small { color: var(--muted); font-weight: 400; margin-left: 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { color: var(--muted); font-size: 12px; }
+  .hint { color: var(--muted); font-size: 11px; }
+  .field .hint { max-width: 240px; }
+  select, input[type=number] { background: var(--panel2); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; font-size: 13px; }
+  input[type=number] { width: 90px; }
+  button { background: var(--accent); color: #06122b; border: 0; cursor: pointer;
+    font-weight: 640; border-radius: 8px; padding: 10px 20px; font-size: 14px; }
+  button.secondary { background: var(--panel2); color: var(--ink); border: 1px solid var(--line); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .filebtn { position: relative; overflow: hidden; display: inline-block; }
+  .filebtn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .fname { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .fname.set { color: var(--accent2); }
+  .muted { color: var(--muted); }
+  .note { color: var(--warn); font-size: 12.5px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .bar { height: 10px; background: var(--panel2); border-radius: 6px; overflow: hidden;
+    border: 1px solid var(--line); width: 100%; }
+  .bar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg,var(--accent),var(--accent2)); transition: width .12s; }
+  .hidden { display: none; }
+  table.stats { border-collapse: collapse; font-size: 13px; width: 100%; }
+  table.stats th, table.stats td { padding: 5px 12px 5px 0; text-align: left; }
+  table.stats th { color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--line); }
+  table.stats td.v { font-variant-numeric: tabular-nums; }
+  .metrics { display: flex; gap: 26px; flex-wrap: wrap; margin-bottom: 10px; }
+  .metric { background: var(--panel2); border: 1px solid var(--line); border-radius: 9px; padding: 12px 16px; }
+  .metric .k { color: var(--muted); font-size: 11.5px; }
+  .metric .val { font-size: 22px; font-weight: 680; font-variant-numeric: tabular-nums; }
+  .legend { display: flex; gap: 18px; font-size: 12px; color: var(--muted); margin: 6px 0 2px; }
+  .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
+  svg text { fill: var(--muted); font-size: 11px; }
+  .err { color: #ff7a7a; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Correlation Discrimination · <span>PS-statistics LDA</span></h1>
+  <div class="sub">
+    Trains a linear discriminant that, given a pair of visualizations each described by
+    its Portilla–Simoncelli summary statistics, predicts which plot has the higher
+    correlation. Train on one stimulus set, test on another, and see accuracy across
+    <span class="mono">rbase</span> levels.
+  </div>
+</header>
+<main>
+
+  <div class="panel">
+    <h2>1 · Datasets <small>CSV from the stimulus generator (one visualization per row, two rows per stimulus)</small></h2>
+    <div class="row">
+      <div class="field">
+        <label>Training set</label>
+        <button class="secondary filebtn">Choose training CSV… <input type="file" id="trainFile" accept=".csv"></button>
+        <div class="fname" id="trainName">no file selected</div>
+      </div>
+      <div class="field">
+        <label>Test set</label>
+        <button class="secondary filebtn">Choose test CSV… <input type="file" id="testFile" accept=".csv"></button>
+        <div class="fname" id="testName">no file selected</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>2 · Model <small>regularized linear discriminant analysis</small></h2>
+    <div class="row">
+      <div class="field">
+        <label>Feature construction</label>
+        <select id="mode">
+          <option value="concat">Concatenate both plots  (2 × PS stats)</option>
+          <option value="difference">Difference of plots  (antisymmetric)</option>
+        </select>
+        <div class="hint" id="modeHint"></div>
+      </div>
+      <div class="field">
+        <label>Covariance</label>
+        <select id="covariance">
+          <option value="full">Full (shrinkage)</option>
+          <option value="diagonal">Diagonal (fast)</option>
+        </select>
+        <div class="hint" id="covHint"></div>
+      </div>
+      <div class="field">
+        <label>Shrinkage λ</label>
+        <input type="number" id="shrinkage" value="0.2" min="0" max="1" step="0.05">
+        <div class="hint">Toward scaled identity. 0 = plain LDA, 1 = diagonal.</div>
+      </div>
+      <div class="field">
+        <label>Slot-randomization seed</label>
+        <input type="number" id="seed" value="1" min="0" step="1">
+        <div class="hint">Randomizes which plot is slot 0 vs slot 1, so left/right can't be learned.</div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:16px">
+      <button id="run" disabled>Train &amp; evaluate</button>
+      <span class="note" id="timeNote"></span>
+    </div>
+  </div>
+
+  <div class="panel hidden" id="progressPanel">
+    <h2>Working…</h2>
+    <div class="bar"><i id="progBar"></i></div>
+    <div class="fname" id="progMsg" style="margin-top:8px"></div>
+  </div>
+
+  <div class="panel hidden" id="errorPanel">
+    <h2 class="err">Error</h2>
+    <div class="err mono" id="errMsg"></div>
+  </div>
+
+  <div class="panel hidden" id="resultPanel">
+    <h2>3 · Results</h2>
+    <div class="metrics" id="metrics"></div>
+    <div class="legend">
+      <span><span class="swatch" style="background:var(--test)"></span>Test</span>
+      <span><span class="swatch" style="background:var(--train)"></span>Train</span>
+      <span><span class="swatch" style="background:var(--chance)"></span>Chance (50%)</span>
+    </div>
+    <div id="chart"></div>
+    <table class="stats" id="byRbaseTable"></table>
+    <div id="byParticipantWrap" class="hidden" style="margin-top:18px">
+      <div class="hint" style="margin-bottom:6px">Per-participant test accuracy (training is flattened across all participants):</div>
+      <table class="stats" id="byParticipantTable"></table>
+    </div>
+    <div class="fname mono" id="modelSummary" style="margin-top:14px"></div>
+    <div class="row" style="margin-top:16px">
+      <button id="dlTest" class="secondary">⤓ Per-stimulus calls · test CSV</button>
+      <button id="dlTrain" class="secondary">⤓ Per-stimulus calls · train CSV</button>
+    </div>
+    <div class="hint" style="margin-top:6px">
+      Harrison-et-al. format (<span class="mono">rbase, rv, approach, correctChoice, currentChoice,
+      gotItRight, index, jnd, participant, vis, rdirection</span>) — one row per stimulus, for
+      per-participant JND fitting. <span class="mono">jnd</span> is left blank to fill in downstream.
+    </div>
+  </div>
+
+</main>
+<script src="app.js"></script>
+</body>
+</html>

@@ -2,6 +2,10 @@
 reference_harness/ref_stats
 reference_harness/*.o
 
+# Stimulus / analysis data CSVs (generated output + bundled reference data;
+# not source, kept out of the repo)
+analysis/*.csv
+
 # Generated validation artifacts (recreated by test/run.sh)
 test/fixture_gray.txt
 test/fixture.json
