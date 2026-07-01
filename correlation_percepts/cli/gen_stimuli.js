@@ -131,7 +131,59 @@ function parseArgs(argv) {
   };
 }
 
+const HELP = `gen_stimuli — command-line stimulus-collection generator (Node.js, parallel)
+
+Generates a labelled dataset of visualization *pairs* at chosen base correlations,
+rasterizes each plot, runs it through the Portilla-Simoncelli analysis, and writes
+the CSV (same format as the browser generator). One row per visualization, two
+rows per stimulus pair; a 'participant' column follows 'stimulus'.
+
+USAGE
+  cli/gen_stimuli [options]                 # or: node cli/gen_stimuli.js [options]
+
+OPTIONS (defaults in brackets — identical to the browser UI)
+  Collection design
+    --bases LIST        base correlation levels, comma-separated  [0.2,0.3,0.4,0.5,0.6,0.7,0.8]
+    --per-base N        stimulus pairs per base level             [2000]
+    --participants N    replications of the full design           [1]
+    --range R           comparison offset; the non-base plot is
+                        r ~ Uniform[rbase-R, rbase+R] (cropped)    [0.2]
+    --sign pos|neg      correlation sign                          [pos]
+
+  Plot appearance (mirrors the browser controls)
+    --type T            scatter | parallel | ordered              [scatter]
+    --npoints N         data points per plot                      [100]
+    --marksize M        mark size: circle radius (scatter) or
+                        line width (parallel/ordered), px @ size   [2]
+    --opacity O         mark opacity, 0..1                        [1]
+    --size PX           raster size (square, px)                  [256]
+
+  PS analysis
+    --steer N           orientations (N_steer)                    [4]
+    --scales N          pyramid scales (N_pyr)                    [4]
+    --na N              autocorrelation neighbourhood (Na)        [7]
+
+  Run control
+    --seed UINT         reproducible collection (default: random, printed)
+    --jobs N            parallel worker threads                   [CPU count - 1]
+    --out FILE          write CSV here                            [stdout]
+    -h, --help          show this help
+
+NOTES
+  CSV goes to --out (or stdout); progress goes to stderr. Runs are reproducible
+  with a fixed --seed, and --jobs never changes the output. Rendering uses a
+  hard-edged rasterizer (not the browser's antialiased canvas), so PS statistic
+  values differ slightly from the browser; everything else corresponds exactly.
+
+EXAMPLES
+  cli/gen_stimuli --bases "0.3,0.6" --per-base 5 --participants 2 --out set.csv
+  cli/gen_stimuli --per-base 2000 --seed 42 --jobs 8 --out big.csv
+  cli/gen_stimuli --type parallel --npoints 200 --marksize 1 --opacity 0.5 --out pc.csv
+`;
+
 function main() {
+  const a = process.argv.slice(2);
+  if (a.includes('-h') || a.includes('--help')) { process.stdout.write(HELP); process.exit(0); }
   const cfg = parseArgs(process.argv);
   if (!cfg.bases.length) { process.stderr.write('no valid base correlation levels\n'); process.exit(2); }
   const total = 2 * cfg.perBase * cfg.bases.length * cfg.participants;

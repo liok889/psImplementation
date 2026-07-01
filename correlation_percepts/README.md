@@ -120,8 +120,10 @@ Flags (defaults in parentheses): `--bases "0.2,…,0.8"`, `--per-base 2000`,
 `--type scatter|parallel|ordered`, `--marksize 2`, `--opacity 1`, `--size 256`,
 `--steer 4` `--scales 4` `--na 7` (PS `N_steer`/`N_pyr`/`Na`), `--seed <uint>`
 (default: a random seed, printed to stderr), `--out FILE` (default: stdout),
-`--jobs N` (default: CPU count − 1). The CSV goes to stdout/`--out`; progress goes
-to stderr. Throughput is ~75 plots/s on 13 workers for 100-point scatterplots, so
+`--jobs N` (default: CPU count − 1). `-h`/`--help` prints the full usage. The CSV
+goes to stdout/`--out`; progress goes to stderr. Smaller `--size` fits fewer
+pyramid scales, so the PS analysis clamps `N_pyr` and emits fewer statistic
+columns (the default 256 gives the full 1270). Throughput is ~75 plots/s on 13 workers for 100-point scatterplots, so
 the default 28k-plot set takes ~6 min.
 
 **Correspondence with the browser.** The task-building and CSV format
