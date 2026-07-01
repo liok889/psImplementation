@@ -97,14 +97,17 @@ function pickDistinct(n, k, rand) {
 }
 
 // ============================ WORKER ============================
-// Rebuilds the full (deterministic, seeded) task list and processes only its
-// assigned [start, end) slice, writing finished CSV rows to its part file.
+// Builds ONLY its assigned [start, end) slice of the (deterministic, seeded) task
+// list — the RNG is advanced through every pair so values match, but only the
+// slice's tasks are allocated — and writes finished CSV rows to its part file,
+// flushing to disk periodically so nothing large accumulates in memory.
 if (!isMainThread) {
   const { CorrGen, CorrRaster, CorrCollection, PS } = loadModules();
   const cfg = workerData.cfg;
-  const rng = CorrCollection.mulberry32(cfg.seed >>> 0);
   const tasks = CorrCollection.buildTasks(
-    { bases: cfg.bases, n: cfg.perBase, range: cfg.range, sign: cfg.sign, participants: cfg.participants }, rng);
+    { bases: cfg.bases, n: cfg.perBase, range: cfg.range, sign: cfg.sign, participants: cfg.participants },
+    CorrCollection.mulberry32(cfg.seed >>> 0),
+    { start: workerData.start, end: workerData.end });   // this worker's slice only
   const vis = CorrCollection.visLabel(cfg.type);
 
   function analyzeRaw(r, seed) {
@@ -118,18 +121,19 @@ if (!isMainThread) {
   }
 
   const fd = fs.openSync(workerData.partPath, 'w');
-  let buf = [], done = 0, headerWritten = false;
-  const flush = () => { if (buf.length) { fs.writeSync(fd, buf.join('')); buf = []; } };
-  for (let i = workerData.start; i < workerData.end; i++) {
+  const FLUSH_BYTES = 1 << 20;                 // flush to disk every ~1 MB
+  let buf = [], bufBytes = 0, done = 0, headerWritten = false;
+  const flush = () => { if (buf.length) { fs.writeSync(fd, buf.join('')); buf = []; bufBytes = 0; } };
+  const emit = (s) => { buf.push(s); bufBytes += s.length; if (bufBytes >= FLUSH_BYTES) flush(); };
+  for (let i = 0; i < tasks.length; i++) {
     const t = tasks[i];
     const obj = analyzeRaw(t.r, t.seed);
     if (workerData.emitHeader && !headerWritten) {
-      buf.push(CorrCollection.header(obj.annotated.map((a) => a.key)).join(',') + '\n');
+      emit(CorrCollection.header(obj.annotated.map((a) => a.key)).join(',') + '\n');
       headerWritten = true;
     }
-    buf.push(CorrCollection.rowStr(t, obj.raw, vis, cfg.npoints) + '\n');
+    emit(CorrCollection.rowStr(t, obj.raw, vis, cfg.npoints) + '\n');
     done++;
-    if (buf.length >= 256) flush();
     if ((done & 15) === 0) parentPort.postMessage({ type: 'progress', done });
   }
   flush();

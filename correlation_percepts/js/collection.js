@@ -25,10 +25,20 @@
   // the design) and each base level, `cfg.n` pairs: one plot at exactly rbase,
   // the other at r ~ Uniform[rbase-range, rbase+range] cropped to [0,1]; which
   // side (L/R) holds the base is randomized. Negative sign negates both. Each
-  // plot is one CSV row; the two rows of a pair are adjacent. `stimulus` restarts
-  // per participant. `rng` is a function returning [0,1) (default Math.random).
-  function buildTasks(cfg, rng) {
+  // plot is one CSV row; the two rows of a pair are adjacent (left = even line,
+  // right = odd line). `stimulus` restarts per participant. `rng` returns [0,1)
+  // (default Math.random).
+  //
+  // `range` = { start, end } (optional): materialize only the tasks whose
+  // lineIndex is in [start, end). The RNG is still advanced through every pair so
+  // the stream — and thus every task's values — is identical regardless of range;
+  // only object allocation is skipped. This lets each parallel worker build just
+  // its own slice instead of the whole (potentially huge) list. The returned
+  // array is dense and in ascending lineIndex order.
+  function buildTasks(cfg, rng, range) {
     rng = rng || Math.random;
+    var start = range ? range.start : 0;
+    var end = range ? range.end : Infinity;
     var tasks = [], line = 0;
     var participants = Math.max(1, cfg.participants || 1);
     for (var p = 1; p <= participants; p++) {
@@ -38,16 +48,20 @@
         var lo = Math.max(0, rb - cfg.range), hi = Math.min(1, rb + cfg.range);
         for (var k = 0; k < cfg.n; k++) {
           pair++;
+          // RNG draws (order fixed for reproducibility): comparison r, side, two seeds.
           var rOther = lo + rng() * (hi - lo);
           var rbaseV = cfg.sign * rb, rOtherV = cfg.sign * rOther;
           var baseLeft = rng() < 0.5;
-          var lb = line + (baseLeft ? 0 : 1);
-          var lo2 = line + (baseLeft ? 1 : 0);
-          line += 2;
           var seedBase = (rng() * 4294967296) >>> 0;
           var seedOther = (rng() * 4294967296) >>> 0;
-          tasks[lb]  = { lineIndex: lb,  participant: p, stim: pair, rbase: rbaseV, r: rbaseV,  lr: baseLeft ? 'L' : 'R', seed: seedBase };
-          tasks[lo2] = { lineIndex: lo2, participant: p, stim: pair, rbase: rbaseV, r: rOtherV, lr: baseLeft ? 'R' : 'L', seed: seedOther };
+          var lLine = line, rLine = line + 1;   // left plot even line, right plot odd line
+          line += 2;
+          if (lLine >= start && lLine < end)
+            tasks.push({ lineIndex: lLine, participant: p, stim: pair, rbase: rbaseV,
+              r: baseLeft ? rbaseV : rOtherV, lr: 'L', seed: baseLeft ? seedBase : seedOther });
+          if (rLine >= start && rLine < end)
+            tasks.push({ lineIndex: rLine, participant: p, stim: pair, rbase: rbaseV,
+              r: baseLeft ? rOtherV : rbaseV, lr: 'R', seed: baseLeft ? seedOther : seedBase });
         }
       }
     }
