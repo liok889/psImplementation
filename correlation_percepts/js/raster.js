@@ -1,9 +1,11 @@
 // CorrRaster — pure-JS rasterizer for correlation stimuli, the headless
-// counterpart of the browser's canvas renderer (js/render.js). It draws the same
-// marks (dark on white) as hard-edged pixels — NOT antialiased like the canvas —
-// so it is deterministic and dependency-free (runs under `jsc`), at the cost of
-// not being a pixel-exact copy of the browser canvas. Used by the CLI generator
-// and by cli/corr_to_fixture.js. UMD-style global `CorrRaster`.
+// counterpart of the browser's canvas renderer (js/render.js). Marks are dark on
+// white. Scatter points are drawn as anti-aliased filled circles (sub-pixel
+// coverage) so they match the browser's round dots rather than degenerating to
+// hard diamonds at small radii; parallel/ordered lines are still hard-edged. It
+// is deterministic and dependency-free (runs under `jsc` and Node); it is close
+// to, but not a pixel-exact copy of, the browser canvas. Used by the CLI
+// generator and by cli/corr_to_fixture.js. UMD-style global `CorrRaster`.
 (function (root) {
   'use strict';
 
@@ -72,12 +74,29 @@
       };
       for (i = 1; i < n2; i++) segO(xposO(i - 1), mapV(pts[order[i - 1]][0], ex), xposO(i), mapV(pts[order[i]][0], ex));
       for (i = 1; i < n2; i++) segO(xposO(i - 1), mapV(pts[order[i - 1]][1], ey), xposO(i), mapV(pts[order[i]][1], ey));
-    } else { // scatter
-      var rad = Math.max(0, Math.round(markSize));
+    } else { // scatter — anti-aliased filled circles (matches the canvas renderer)
+      // Sub-pixel coverage so small marks are round dots, not a hard integer
+      // disk (which degenerates to a diamond at radius ~2). Uses the same float
+      // center/radius and pixel convention as canvas (center (cx,cy), pixel px
+      // spans [px,px+1)), so the marks line up with the browser output.
+      var rad = markSize, r2 = rad * rad, ss = 4, inv = 1 / (ss * ss);
       for (i = 0; i < pts.length; i++) {
-        var cx = Math.round(mapx(pts[i][0])), cy = Math.round(mapy(pts[i][1]));
-        for (var dy = -rad; dy <= rad; dy++) for (var dx = -rad; dx <= rad; dx++)
-          if (dx * dx + dy * dy <= rad * rad) blend(cx + dx, cy + dy, opacity);
+        var cxf = mapx(pts[i][0]), cyf = mapy(pts[i][1]);
+        var x0 = Math.floor(cxf - rad - 1), x1 = Math.ceil(cxf + rad + 1);
+        var y0 = Math.floor(cyf - rad - 1), y1 = Math.ceil(cyf + rad + 1);
+        for (var py = y0; py <= y1; py++) {
+          for (var px = x0; px <= x1; px++) {
+            var cov = 0;
+            for (var sj = 0; sj < ss; sj++) {
+              var oy = py + (sj + 0.5) / ss - cyf;   // sub-sample offset from circle center (y)
+              for (var si = 0; si < ss; si++) {
+                var ox = px + (si + 0.5) / ss - cxf; // sub-sample offset (x)
+                if (ox * ox + oy * oy <= r2) cov++;
+              }
+            }
+            if (cov) blend(px, py, opacity * cov * inv);
+          }
+        }
       }
     }
     return img;

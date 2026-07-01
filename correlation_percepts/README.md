@@ -139,10 +139,11 @@ the default 28k-plot set takes ~6 min.
 (`js/gen.js` → `CorrGen`) are the **same modules** the browser uses, so task
 lists and CSV rows are byte-identical for the same RNG stream, and the PS
 analysis is the same reference-validated code (matches `cli/ps_stats` to 0.0).
-The **one** difference is rasterization: the browser draws antialiased HTML-canvas
-marks, while the CLI (and `cli/corr_to_fixture.js`) use `js/raster.js`
-(`CorrRaster`) — hard-edged, deterministic, dependency-free. So PS statistic
-*values* differ slightly by rendering; everything else corresponds exactly. Runs
+The **one** difference is rasterization: the browser draws HTML-canvas marks,
+while the CLI (and `cli/corr_to_fixture.js`) use `js/raster.js` (`CorrRaster`),
+deterministic and dependency-free. Scatter points are anti-aliased filled circles
+that match the browser's round dots; parallel/ordered lines are hard-edged. So PS
+statistic *values* differ slightly by rendering; everything else corresponds exactly. Runs
 are reproducible (fixed `--seed`) and parallelism never changes the output
 (chunking by line index; `--jobs 1` ≡ `--jobs 8`).
 
