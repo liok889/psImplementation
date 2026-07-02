@@ -1,0 +1,9 @@
+#!/bin/bash
+# Thin launcher for the Node.js correlation-discrimination LDA analysis tool.
+# See lda_analyze.js (or --help) for the full flag list.
+#
+# Example:
+#   analysis/cli/lda_analyze --train train.csv --test test.csv --out calls.csv
+HERE="$(cd "$(dirname "$0")" && pwd)"
+NODE="${NODE:-$(command -v node || echo /opt/local/bin/node)}"
+exec "$NODE" "$HERE/lda_analyze.js" "$@"

@@ -102,6 +102,23 @@ wide relative to the number of pairs.
 - **Diagonal covariance** ignores those correlations; near-instant, but markedly
   less accurate here.
 
+## Command-line tool (`cli/lda_analyze`, Node.js)
+
+The headless counterpart of the browser tool — same analysis, no browser:
+
+```bash
+analysis/cli/lda_analyze --train train.csv --test test.csv --out calls.csv
+```
+
+It trains the LDA, prints accuracy to **stdout** (overall test/train, a per-`rbase`
+table, and — when the test set has >1 participant — a per-participant table), and
+writes the per-trial TEST calls (Harrison format, below) to `--out`. Flags
+(defaults in brackets): `--mode concat|difference` [concat], `--covariance
+full|diagonal` [full], `--shrinkage L` [0.2], `--seed N` [1], `--out FILE`
+[per_trial_test.csv], `--train-out FILE` [none], `-h`/`--help`. It reuses the same
+`psdata.js`/`lda.js` as the browser, so results match (e.g. difference/full ≈ 86%
+test on the bundled sets). Progress goes to stderr.
+
 ## Per-stimulus output (for JND fitting)
 
 Besides the accuracy chart, the results panel offers **per-stimulus calls** for the
