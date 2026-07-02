@@ -119,6 +119,17 @@ full|diagonal` [full], `--shrinkage L` [0.2], `--seed N` [1], `--out FILE`
 `psdata.js`/`lda.js` as the browser, so results match (e.g. difference/full ≈ 86%
 test on the bundled sets). Progress goes to stderr.
 
+The CLI **streams** both files line-by-line (`psdata.js` `parseHeaderLine` /
+`parseDataLine` / `createPairStream`): the training set is loaded into the feature
+matrix (training needs all pairs), but the **test set is streamed through the
+trained model one pair at a time** — score it, write its per-trial row, tally the
+accuracy — so test-set memory is O(1) and arbitrarily large test files work.
+(Reading a whole multi-GB CSV as one string hits Node's ~512 MB string limit; the
+streaming path avoids that entirely — a 0.6 GB test file that throws
+`ERR_STRING_TOO_LONG` on a plain read processes fine.) The streamed path is
+verified to produce byte-identical features, labels, and per-trial rows to the
+batch path.
+
 ## Per-stimulus output (for JND fitting)
 
 Besides the accuracy chart, the results panel offers **per-stimulus calls** for the

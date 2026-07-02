@@ -84,57 +84,139 @@ function scoreRows(model, feat) {
   for (let i = 0; i < feat.n; i++) scores[i] = PSLDA.score(model, feat.X.subarray(i * feat.D, (i + 1) * feat.D));
   return scores;
 }
-// Accuracy per participant (numeric sort when ids are numbers).
-function byParticipant(scores, feat) {
-  const m = new Map();
-  for (let i = 0; i < feat.n; i++) {
-    const p = feat.pairsMeta[i].participant;
-    const ok = ((scores[i] > 0 ? 1 : 0) === feat.y[i]) ? 1 : 0;
-    let e = m.get(p); if (!e) { e = { n: 0, correct: 0 }; m.set(p, e); }
-    e.n++; e.correct += ok;
-  }
-  return Array.from(m.keys()).sort((x, y) => { const nx = +x, ny = +y; return (isFinite(nx) && isFinite(ny)) ? nx - ny : (x < y ? -1 : x > y ? 1 : 0); })
-    .map((k) => { const e = m.get(k); return { participant: k, n: e.n, correct: e.correct, accuracy: e.correct / e.n }; });
-}
 function pct(x) { return (100 * x).toFixed(1) + '%'; }
-function countParticipants(feat) { const s = {}; for (let i = 0; i < feat.n; i++) s[feat.pairsMeta[i].participant] = 1; return Object.keys(s).length; }
-function labelFrac1(feat) { let n1 = 0; for (let i = 0; i < feat.n; i++) n1 += feat.y[i]; return n1 / feat.n; }
+// numeric sort of a Map's keys when they parse as numbers, else lexicographic.
+function sortKeys(keys) {
+  return keys.sort((x, y) => { const nx = +x, ny = +y; return (isFinite(nx) && isFinite(ny)) ? nx - ny : (x < y ? -1 : x > y ? 1 : 0); });
+}
+function tallyToArray(map, nameKey) {
+  return sortKeys(Array.from(map.keys())).map((k) => { const e = map.get(k); const o = { n: e.n, correct: e.correct, accuracy: e.correct / e.n }; o[nameKey] = k; return o; });
+}
 
-function main() {
+// Read a file line-by-line (bounded memory), calling onLine for each. The first
+// line (header) and empty lines are handled by the caller via onLine.
+function streamLines(file, onLine) {
+  const readline = require('readline');
+  return new Promise((resolve, reject) => {
+    const rl = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
+    rl.on('line', (line) => { try { onLine(line); } catch (e) { rl.close(); reject(e); } });
+    rl.on('close', resolve);
+    rl.on('error', reject);
+  });
+}
+
+// throttled stderr status (in-place on a TTY, periodic line when piped)
+const isTTY = !!process.stderr.isTTY;
+let _lastStatus = 0;
+function status(msg, force) {
+  const now = Date.now();
+  if (!force && now - _lastStatus < (isTTY ? 100 : 3000)) return;
+  _lastStatus = now;
+  process.stderr.write(isTTY ? '\r  ' + msg + '                    ' : '  ' + msg + '\n');
+}
+
+// Stream a training CSV into an in-memory feature matrix (training inherently
+// needs all pairs). Returns a feature set compatible with PSLDA.train/evaluate.
+async function loadTrainStreaming(file, mode, seed) {
+  let hdr = null, ps = null;
+  const feats = [], labels = [], rbases = [], metas = [];
+  const parts = new Set();
+  await streamLines(file, (line) => {
+    if (line === '') return;
+    if (!hdr) { hdr = PSData.parseHeaderLine(line); ps = PSData.createPairStream(hdr, { mode, seed }); return; }
+    const pr = ps.push(PSData.parseDataLine(line, hdr));
+    if (pr) {
+      feats.push(pr.feature); labels.push(pr.label); rbases.push(pr.rbase); metas.push(pr.meta);
+      parts.add(pr.meta.participant);
+      if ((feats.length & 1023) === 0) status(`loading training pairs: ${feats.length}`);
+    }
+  });
+  const n = feats.length, D = ps.D;
+  const X = new Float64Array(n * D);
+  for (let i = 0; i < n; i++) X.set(feats[i], i * D);
+  const y = new Int8Array(n), rbase = new Float64Array(n);
+  for (let i = 0; i < n; i++) { y[i] = labels[i]; rbase[i] = rbases[i]; }
+  feats.length = 0; // free the per-pair arrays
+  return { X, y, rbase, n, D, P: hdr.P, pairsMeta: metas, featureNames: ps.featureNames, nParticipants: parts.size };
+}
+
+// Stream a test CSV through the trained model one pair at a time: score each,
+// write its per-trial (Harrison-format) row to `outFd`, and accumulate accuracy
+// tallies. Never holds the whole test set — memory is O(1). Returns eval stats.
+async function streamTestEval(file, mode, seed, model, outFd) {
+  let hdr = null, ps = null;
+  let correct = 0, ntot = 0, n1 = 0;
+  const byR = new Map(), byP = new Map(), idxByP = new Map();
+  let buf = [PSData.TRIAL_COLUMNS.join(',') + '\n'], bufBytes = buf[0].length;
+  const flush = () => { if (buf.length) { fs.writeSync(outFd, buf.join('')); buf = []; bufBytes = 0; } };
+  await streamLines(file, (line) => {
+    if (line === '') return;
+    if (!hdr) {
+      hdr = PSData.parseHeaderLine(line);
+      ps = PSData.createPairStream(hdr, { mode, seed });
+      if (ps.D !== model.D) throw new Error(`test feature dim ${ps.D} != model ${model.D} (train/test must share --mode, points, size)`);
+      return;
+    }
+    const pr = ps.push(PSData.parseDataLine(line, hdr));
+    if (!pr) return;
+    const score = PSLDA.score(model, pr.feature);
+    const ok = ((score > 0 ? 1 : 0) === pr.label) ? 1 : 0;
+    correct += ok; ntot++; n1 += pr.label;
+    let er = byR.get(pr.rbase); if (!er) { er = { n: 0, correct: 0 }; byR.set(pr.rbase, er); } er.n++; er.correct += ok;
+    const part = pr.meta.participant;
+    let ep = byP.get(part); if (!ep) { ep = { n: 0, correct: 0 }; byP.set(part, ep); } ep.n++; ep.correct += ok;
+    const idx = idxByP.get(part) || 0; idxByP.set(part, idx + 1);
+    const s = PSData.trialRowStr(pr.meta, score, idx) + '\n';
+    buf.push(s); bufBytes += s.length; if (bufBytes >= (1 << 20)) flush();
+    if ((ntot & 2047) === 0) status(`scoring test pairs: ${ntot}`);
+  });
+  flush();
+  return {
+    accuracy: ntot ? correct / ntot : 0, n: ntot, correct, frac1: ntot ? n1 / ntot : 0,
+    nParticipants: byP.size,
+    byRbase: tallyToArray(byR, 'rbase'),
+    byParticipant: tallyToArray(byP, 'participant')
+  };
+}
+
+async function main() {
   const cfg = parseArgs(process.argv);
   if (cfg.help) { process.stdout.write(HELP); process.exit(0); }
   if (!cfg.train || !cfg.test) { process.stderr.write('error: --train and --test are required (see --help)\n'); process.exit(2); }
   for (const f of [cfg.train, cfg.test]) if (!fs.existsSync(f)) { process.stderr.write(`error: file not found: ${f}\n`); process.exit(2); }
 
   const t0 = Date.now();
-  process.stderr.write('reading + parsing CSVs…\n');
-  const trainParsed = PSData.parseCSV(fs.readFileSync(cfg.train, 'utf8'));
-  const testParsed = PSData.parseCSV(fs.readFileSync(cfg.test, 'utf8'));
-  const tr = PSData.buildPairs(trainParsed, { mode: cfg.mode, seed: cfg.seed });
-  const te = PSData.buildPairs(testParsed, { mode: cfg.mode, seed: (cfg.seed >>> 0) + 1 });
 
-  process.stderr.write(`training LDA (mode=${cfg.mode}, covariance=${cfg.covariance}, shrinkage=${cfg.shrinkage})…\n`);
+  // ---- train (streamed load; training needs all pairs in memory) ----
+  process.stderr.write(`loading training set (streaming): ${cfg.train}\n`);
+  const tr = await loadTrainStreaming(cfg.train, cfg.mode, cfg.seed);
+  if (isTTY) process.stderr.write('\n');
+  process.stderr.write(`training LDA on ${tr.n} pairs (mode=${cfg.mode}, covariance=${cfg.covariance}, shrinkage=${cfg.shrinkage})…\n`);
   const tTrain = Date.now();
   const model = PSLDA.train(tr.X, tr.y, tr.n, tr.D, {
     shrinkage: cfg.shrinkage, covariance: cfg.covariance,
-    progress: (f, m) => { if (process.stderr.isTTY) process.stderr.write(`\r  ${(100 * f).toFixed(0)}%  ${m}                    `); }
+    progress: (f, m) => status(`${(100 * f).toFixed(0)}%  ${m}`)
   });
-  if (process.stderr.isTTY) process.stderr.write('\n');
+  if (isTTY) process.stderr.write('\n');
   const trainMs = Date.now() - tTrain;
-
   const evTr = PSLDA.evaluate(model, tr.X, tr.y, tr.rbase, tr.n, tr.D);
-  const evTe = PSLDA.evaluate(model, te.X, te.y, te.rbase, te.n, te.D);
-  const scoresTe = scoreRows(model, te), scoresTr = scoreRows(model, tr);
-  const bpTe = byParticipant(scoresTe, te);
+
+  // ---- test (streamed: score + write per-trial calls + tally, O(1) memory) ----
+  process.stderr.write(`evaluating test set (streaming) → per-trial calls: ${cfg.out}\n`);
+  const outFd = fs.openSync(cfg.out, 'w');
+  const evTe = await streamTestEval(cfg.test, cfg.mode, (cfg.seed >>> 0) + 1, model, outFd);
+  fs.closeSync(outFd);
+  if (isTTY) process.stderr.write('\n');
 
   // ---- stats report to stdout ----
+  const trFrac1 = (() => { let s = 0; for (let i = 0; i < tr.n; i++) s += tr.y[i]; return s / tr.n; })();
   const L = [];
   L.push('══ Correlation-discrimination LDA ══');
   L.push(`  train: ${cfg.train}   test: ${cfg.test}`);
   L.push(`  mode=${cfg.mode}  covariance=${cfg.covariance}  shrinkage=${cfg.shrinkage}  seed=${cfg.seed}`);
-  L.push(`  PS stats/plot=${trainParsed.P}  features D=${tr.D}  used(d)=${model.d}`);
-  L.push(`  train pairs=${tr.n} (${countParticipants(tr)} participant(s), labels ${labelFrac1(tr).toFixed(3)} balanced)`);
-  L.push(`  test  pairs=${te.n} (${countParticipants(te)} participant(s), labels ${labelFrac1(te).toFixed(3)} balanced)`);
+  L.push(`  PS stats/plot=${tr.P}  features D=${tr.D}  used(d)=${model.d}`);
+  L.push(`  train pairs=${tr.n} (${tr.nParticipants} participant(s), labels ${trFrac1.toFixed(3)} balanced)`);
+  L.push(`  test  pairs=${evTe.n} (${evTe.nParticipants} participant(s), labels ${evTe.frac1.toFixed(3)} balanced)`);
   L.push('');
   L.push(`  TEST  accuracy: ${pct(evTe.accuracy)}   (${evTe.correct}/${evTe.n})`);
   L.push(`  TRAIN accuracy: ${pct(evTr.accuracy)}   (${evTr.correct}/${evTr.n})`);
@@ -144,25 +226,23 @@ function main() {
   const trByR = {}; evTr.byRbase.forEach((x) => { trByR[x.rbase] = x; });
   evTe.byRbase.forEach((x) => {
     const tb = trByR[x.rbase];
-    L.push(`    ${x.rbase.toFixed(2).padStart(5)}  ${pct(x.accuracy).padStart(6)}  ${String(x.n).padStart(4)}  ${(tb ? pct(tb.accuracy) : '–').padStart(6)}`);
+    L.push(`    ${x.rbase.toFixed(2).padStart(5)}  ${pct(x.accuracy).padStart(6)}  ${String(x.n).padStart(5)}  ${(tb ? pct(tb.accuracy) : '–').padStart(6)}`);
   });
-  if (bpTe.length > 1) {
+  if (evTe.byParticipant.length > 1) {
     L.push('');
     L.push('  accuracy by participant (test):');
     L.push('    participant   test    n');
-    bpTe.forEach((x) => { L.push(`    ${String(x.participant).padStart(11)}  ${pct(x.accuracy).padStart(6)}  ${String(x.n).padStart(4)}`); });
+    evTe.byParticipant.forEach((x) => { L.push(`    ${String(x.participant).padStart(11)}  ${pct(x.accuracy).padStart(6)}  ${String(x.n).padStart(5)}`); });
   }
   L.push('');
   L.push(`  train time ${(trainMs / 1000).toFixed(1)}s · total ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   process.stdout.write(L.join('\n') + '\n');
 
-  // ---- per-trial CSVs ----
-  fs.writeFileSync(cfg.out, PSData.buildTrialReport(te, scoresTe));
-  process.stderr.write(`wrote per-trial TEST calls → ${cfg.out} (${te.n} rows)\n`);
+  process.stderr.write(`wrote per-trial TEST calls → ${cfg.out} (${evTe.n} rows)\n`);
   if (cfg.trainOut) {
-    fs.writeFileSync(cfg.trainOut, PSData.buildTrialReport(tr, scoresTr));
+    fs.writeFileSync(cfg.trainOut, PSData.buildTrialReport(tr, scoreRows(model, tr)));
     process.stderr.write(`wrote per-trial TRAIN calls → ${cfg.trainOut} (${tr.n} rows)\n`);
   }
 }
 
-main();
+main().catch((e) => { process.stderr.write('\nerror: ' + (e && e.stack || e) + '\n'); process.exit(1); });
